@@ -3,10 +3,13 @@ import { UrlsValidate } from "./validate";
 import axios from "axios";
 import cors from "cors"
 import { GithubScrape } from "./GithubScrape";
+import Router from "./serverWebrtc";
 
 const app =express()
 app.use(express.json())
 app.use(cors({origin:"*"}))
+
+app.use(Router)
 
 app.post("/api/pre-interview",async (req,res)=>{
     const validate = UrlsValidate.safeParse(req.body)
@@ -22,7 +25,6 @@ app.post("/api/pre-interview",async (req,res)=>{
     
     
     GithubScrape(githubUrlUsername)
-
 
     res.json({"githubUrlUsername": githubUrlUsername, })
 })

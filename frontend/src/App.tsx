@@ -1,18 +1,20 @@
 import "./index.css";
- import {useState} from "react";
-import {Form} from "@/components/Form"
-import {Interview} from "@/components/Interview";
-import {Result} from "@/components/result";
+import { useState } from "react";
+import { Form } from "@/components/Form"
+import { Interview } from "@/components/Interview";
+import { Result } from "@/components/Result";
 import { Toaster } from "sonner"
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
 export function App() {
- const [page, setPage] = useState<"form" | "interview" | "result">("form")
- return <div>
-  {page==="form" && <Form />}
-  {page === "interview" && <Interview />}
-  {page === "result" && <Result />}
-  <Toaster />
-  </div>;
+  return <BrowserRouter>
+    <Routes>
+      <Route path="/" element={<Form />} />
+      <Route path="/interview" element={<Interview />} />
+      <Route path="result" element={<Result />} />
+    </Routes>
+    <Toaster />s
+  </BrowserRouter>
 }
 
 export default App;
