@@ -1,18 +1,19 @@
 import Groq from "groq-sdk";
+// import { prisma } from "@/lib/prisma";
 
 // Initialize the standalone Groq client context wrapper
 const groq = new Groq();
 
 // Maintain a modular, rolling conversation trace log locally inside the engine module
 const conversationHistory: { role: 'system' | 'user' | 'assistant', content: string }[] = [
-    { 
-        role: "system", 
-        content: "You are an elite technical interviewer. Conduct a structured coding and system design interview. Be concise, engaging, professional, and ask only one follow-up question at a time. Wait for the candidate to fully finish their thought." 
+    {
+        role: "system",
+        content: "You are an elite technical interviewer. Conduct a structured coding and system design interview. Be concise, engaging, professional, and ask only one follow-up question at a time. Wait for the candidate to fully finish their thought. first ask wha tis his name and call by his his or her name if need de also ask what role u want to go with first and lets have only short question answer interview and dont ask too many questions at once "
     }
 ];
 
 interface StreamCallbacks {
-    onToken: (token: string) => void;
+    onToken: (t: string) => void;
     onComplete: (fullText: string) => void;
     onError: (err: any) => void;
 }
@@ -37,7 +38,7 @@ export async function LLM(
             stream: true,
             temperature: 0.7,
         }, {
-            signal: signal // Passes down the active turn abort reference wrapper natively
+            signal: signal
         });
 
         let accumulatedResponse = "";
@@ -59,7 +60,7 @@ export async function LLM(
         // 4. Commit fully completed output sequences into tracing logs
         conversationHistory.push({ role: "assistant", content: accumulatedResponse });
         callbacks.onComplete(accumulatedResponse);
-
+        console.log(conversationHistory)
     } catch (error: any) {
         if (error.name === 'AbortError' || error.message === 'AbortError' || signal.aborted) {
             // Log local telemetry actions inside module scope gracefully

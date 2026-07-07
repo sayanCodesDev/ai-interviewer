@@ -13,7 +13,7 @@ export function App() {
       <Route path="/interview" element={<Interview />} />
       <Route path="result" element={<Result />} />
     </Routes>
-    <Toaster />s
+    <Toaster />
   </BrowserRouter>
 }
 
