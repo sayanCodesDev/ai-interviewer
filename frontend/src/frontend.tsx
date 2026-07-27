@@ -8,12 +8,13 @@
 
 import { createRoot } from "react-dom/client";
 import { App } from "./App.js";
+import { RecoilRoot } from "recoil";
 
 const elem = document.getElementById("root")!;
 const app = (
-
-    <App />
-
+    <RecoilRoot>
+        <App />
+    </RecoilRoot>
 );
 
 // https://bun.com/docs/bundler/hot-reloading#import-meta-hot-data
