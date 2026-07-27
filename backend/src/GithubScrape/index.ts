@@ -1,26 +1,48 @@
 import axios from "axios"
 
-export async function GithubScrape(githubUrlUsername?: string){
-    //get repos name 
-    const response =await axios.get(`https://api.github.com/users/${githubUrlUsername}/repos`,)
-    const reposName: string[] = await response.data.map((x: { name: string }) => x.name)
+export interface GithubRepoData {
+  repo: string;
+  codebase: string;
+}
 
-    //get the contents of each repos
-    const results = await Promise.all(
-        reposName.map(async (repo) => {
-          const { data } = await axios.get(
-            `https://gitingest.com/${githubUrlUsername}/${repo}`,
-            {
-              headers: { Accept: "text/plain" },
-              responseType: "text" // 
-            }
-          );
-          return {
-            repo,
-            codebase: data
-          };
-        })
-      );
-    console.log(results)
+export async function GithubScrape(githubUrlUsername?: string): Promise<GithubRepoData[]> {
+  if (!githubUrlUsername) return [];
+  try {
+    // Get list of repos (public only, sorted by recently pushed, limit 6)
+    const response = await axios.get(
+      `https://api.github.com/users/${githubUrlUsername}/repos?sort=pushed&per_page=6`
+    );
+    const reposName: string[] = response.data.map((x: { name: string }) => x.name);
 
+    // Get codebase content from gitingest for each repo
+    const results = await Promise.allSettled(
+      reposName.map(async (repo) => {
+        const { data } = await axios.get(
+          `https://gitingest.com/${githubUrlUsername}/${repo}`,
+          {
+            headers: { Accept: "text/plain" },
+            responseType: "text",
+            timeout: 10000
+          }
+        );
+        return {
+          repo,
+          // Trim each repo codebase to 3000 chars to keep prompt manageable
+          codebase: typeof data === "string" ? data.slice(0, 3000) : ""
+        };
+      })
+    );
+
+    // Only keep fulfilled results
+    const scraped: GithubRepoData[] = results
+      .filter((r): r is PromiseFulfilledResult<GithubRepoData> => r.status === "fulfilled")
+      .map(r => r.value);
+
+    console.log(`[GitHub Scrape] Fetched ${scraped.length} repos for ${githubUrlUsername}`);
+    return scraped;
+
+  } catch (err: any) {
+    console.error("[GitHub Scrape] Error:", err.message);
+    return [];
+  }
 }

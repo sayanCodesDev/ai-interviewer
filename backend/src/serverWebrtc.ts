@@ -50,6 +50,95 @@ router.post("/api/webrtc/offer", async function WebrtcConnection(req, res) {
             streams: [new MediaStream({ id: 'ai-voice-stream', tracks: [aiTrack] })],
         });
 
+        // Setup DataChannel for UI events (such as code editor popouts and code submissions)
+        let dataChannel: any = null;
+        let dgTtsConnection: any = null;
+
+        pc.ondatachannel = (event: any) => {
+            console.log("📡 DataChannel opened with client:", event.channel.label);
+            dataChannel = event.channel;
+
+            dataChannel.onmessage = async (e: any) => {
+                try {
+                    const msg = JSON.parse(e.data);
+                    if (msg.type === "END_INTERVIEW") {
+                        console.log("\n🛑 END_INTERVIEW received. Shutting down AI session...");
+                        // Abort any running LLM stream
+                        if (groqAbortController) {
+                            groqAbortController.abort();
+                            groqAbortController = null;
+                        }
+                        ignoreTtsAudio = true;
+                        // Close Deepgram TTS
+                        if (dgTtsConnection && dgTtsConnection.readyState === 1) {
+                            try { dgTtsConnection.requestClose(); } catch (_) {}
+                        }
+                        // Clear pacing timer
+                        if (pacingInterval) {
+                            clearInterval(pacingInterval);
+                            pacingInterval = null;
+                        }
+                        // Close PeerConnection
+                        try { pc.close(); } catch (_) {}
+                        console.log("✅ AI session terminated cleanly.");
+                        return;
+                    }
+
+                    if (msg.type === "SUBMIT_CODE") {
+                        console.log(`\n📥 Candidate submitted ${msg.language} code to AI Interviewer.`);
+
+                        // Cancel ongoing AI speech if any
+                        if (groqAbortController || !ignoreTtsAudio) {
+                            groqAbortController?.abort();
+                            groqAbortController = null;
+                            ignoreTtsAudio = true;
+                            if (dgTtsConnection && dgTtsConnection.readyState === 1) {
+                                dgTtsConnection.sendClear({ type: "Clear" });
+                            }
+                        }
+
+                        groqAbortController = new AbortController();
+                        const currentSignal = groqAbortController.signal;
+                        ignoreTtsAudio = false;
+
+                        const promptPayload = `[SUBMITTED CODE (${msg.language})]:\n${msg.code}`;
+                        console.log("Evaluating submitted code via LLM...");
+
+                        await LLM(
+                            promptPayload,
+                            currentSignal,
+                            {
+                                onToken: async (token) => {
+                                    if (dgTtsConnection?.readyState === 1 && token.length > 0) {
+                                        dgTtsConnection.sendText({ type: "Speak", text: token });
+                                    }
+                                },
+                                onComplete: async (fullText) => {
+                                    if (groqAbortController?.signal === currentSignal) {
+                                        groqAbortController = null;
+                                    }
+                                    finalizeTtsTurn(dgTtsConnection);
+                                },
+                                onEditorTrigger: (language: string, questionText: string) => {
+                                    if (dataChannel && dataChannel.readyState === "open") {
+                                        dataChannel.send(JSON.stringify({ type: "SHOW_CODE_EDITOR", language, question: questionText }));
+                                    }
+                                },
+                                onHideEditorTrigger: () => {
+                                    if (dataChannel && dataChannel.readyState === "open") {
+                                        dataChannel.send(JSON.stringify({ type: "HIDE_CODE_EDITOR" }));
+                                    }
+                                },
+                                onError: (err) => console.error("Code evaluation error:", err)
+                            }
+                        );
+                    }
+                } catch (err) {
+                    console.error("Error processing DataChannel message:", err);
+                }
+            };
+        };
+
         // --- BUFFERING STATE ---
         let pcmAudioBuffer = Buffer.alloc(0);
         const WEBRTC_FRAME_SIZE = 960; // 20ms of audio samples at 48kHz
@@ -58,9 +147,9 @@ router.post("/api/webrtc/offer", async function WebrtcConnection(req, res) {
         // --- RTP STATE ---
         let sequenceNumber = 0;
         let timestamp = 0;
+        let pacingInterval: NodeJS.Timeout | null = null;
 
         const dgConnection = await STT();
-        let dgTtsConnection = null;
         try {
             dgTtsConnection = await TTS();
         } catch (err) {
@@ -168,7 +257,7 @@ router.post("/api/webrtc/offer", async function WebrtcConnection(req, res) {
         // ===================================================================
         // 2. RUN THE 20MS PACING PACEMAKER CONTINUOUSLY
         // ===================================================================
-        const pacingInterval = setInterval(() => {
+        pacingInterval = setInterval(() => {
             if (pcmAudioBuffer.length < REQUIRED_BYTE_SIZE) return;
 
             const chunkToSend = pcmAudioBuffer.subarray(0, REQUIRED_BYTE_SIZE);
@@ -272,6 +361,24 @@ router.post("/api/webrtc/offer", async function WebrtcConnection(req, res) {
                                             finalizeTtsTurn(dgTtsConnection)
 
                                         },
+                                        onEditorTrigger: (language: string, questionText: string) => {
+                                            console.log(`💻 [CODE EDITOR TRIGGERED]: Opening editor for language: ${language}`);
+                                            if (dataChannel && dataChannel.readyState === "open") {
+                                                dataChannel.send(JSON.stringify({
+                                                    type: "SHOW_CODE_EDITOR",
+                                                    language: language,
+                                                    question: questionText
+                                                }));
+                                            }
+                                        },
+                                        onHideEditorTrigger: () => {
+                                            console.log(`🔒 [CODE EDITOR HIDE TRIGGERED]: Closing editor for candidate`);
+                                            if (dataChannel && dataChannel.readyState === "open") {
+                                                dataChannel.send(JSON.stringify({
+                                                    type: "HIDE_CODE_EDITOR"
+                                                }));
+                                            }
+                                        },
                                         onError: (err) => {
                                             console.error("\nGroq Core Stream Exception:", err);
                                         }
@@ -320,7 +427,7 @@ router.post("/api/webrtc/offer", async function WebrtcConnection(req, res) {
             console.log(`[WebRTC Connection State]: ${pc.connectionState}`);
             if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' ||
                 pc.connectionState === 'closed') {
-                clearInterval(pacingInterval);
+                if (pacingInterval) clearInterval(pacingInterval);
             }
         };
 
