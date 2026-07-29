@@ -38,8 +38,9 @@ export function Navbar() {
             // Ignore error if session already cleared
         } finally {
             localStorage.removeItem("token");
+            setIsLoggedIn(false);
             toast.success("Logged out successfully");
-            navigate("/signin");
+            navigate("/");
         }
     }
 
