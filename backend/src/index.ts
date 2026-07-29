@@ -40,7 +40,10 @@ interface AuthenticatedRequest extends Request {
 
 // Authentication Middleware
 export const authMiddleware = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
-    const token = req.cookies.token;
+    const authHeader = req.headers.authorization;
+    const bearerToken = authHeader && authHeader.startsWith("Bearer ") ? authHeader.substring(7) : null;
+    const token = req.cookies.token || bearerToken;
+
     if (!token) {
         res.status(401).json({ msg: "No token, authorization denied" });
         return;
@@ -80,10 +83,11 @@ app.post("/api/auth/signup", async (req: Request, res: Response): Promise<void> 
 
         const token = jwt.sign({ id: newUser.id, email: newUser.email, name: newUser.name }, JWT_SECRET, { expiresIn: "7d" });
 
+        const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
         res.cookie("token", token, {
             httpOnly: true,
-            secure: true,
-            sameSite: "none",
+            secure: isHttps,
+            sameSite: isHttps ? "none" : "lax",
             maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
         });
 
@@ -91,7 +95,8 @@ app.post("/api/auth/signup", async (req: Request, res: Response): Promise<void> 
             msg: "User registered successfully",
             userId: newUser.id,
             email: newUser.email,
-            name: newUser.name
+            name: newUser.name,
+            token
         });
     } catch (error) {
         console.error("Signup error:", error);
@@ -121,10 +126,11 @@ app.post("/api/auth/signin", async (req: Request, res: Response): Promise<void> 
 
         const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: "7d" });
 
+        const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
         res.cookie("token", token, {
             httpOnly: true,
-            secure: true,
-            sameSite: "none",
+            secure: isHttps,
+            sameSite: isHttps ? "none" : "lax",
             maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
         });
 
@@ -132,7 +138,8 @@ app.post("/api/auth/signin", async (req: Request, res: Response): Promise<void> 
             msg: "Signed in successfully",
             userId: user.id,
             email: user.email,
-            name: user.name
+            name: user.name,
+            token
         });
     } catch (error) {
         console.error("Signin error:", error);

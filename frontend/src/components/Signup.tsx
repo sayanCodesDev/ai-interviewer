@@ -26,6 +26,9 @@ export function Signup() {
                 email,
                 password
             });
+            if (response.data.token) {
+                localStorage.setItem("token", response.data.token);
+            }
             toast.success("Successfully registered! Signing you in...");
             navigate(`/form?userId=${response.data.userId}`);
         } catch (error: any) {

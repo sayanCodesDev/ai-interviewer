@@ -7,8 +7,19 @@ import { Signup } from "./components/Signup";
 import { LandingPage } from "./components/LandingPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Toaster } from "sonner";
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "./components/ThemeContext";
+import axios from "axios";
+
+// Global Axios defaults & interceptor for cross-origin cookie / bearer token support
+axios.defaults.withCredentials = true;
+axios.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 
 export function App() {
   return (

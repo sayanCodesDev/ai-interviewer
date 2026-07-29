@@ -34,10 +34,12 @@ export function Navbar() {
     async function handleLogout() {
         try {
             await axios.post(`${BACKEND_URL}/api/auth/logout`);
+        } catch (err) {
+            // Ignore error if session already cleared
+        } finally {
+            localStorage.removeItem("token");
             toast.success("Logged out successfully");
             navigate("/signin");
-        } catch (err) {
-            toast.error("Logout failed");
         }
     }
 
