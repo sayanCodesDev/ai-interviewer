@@ -145,14 +145,14 @@ app.post("/api/auth/logout", (req: Request, res: Response) => {
     res.json({ msg: "Logged out successfully" });
 });
 
-app.get("/api/auth/me", authMiddleware, (req: AuthenticatedRequest, res: Response) => {
+app.get("/api/auth/me", authMiddleware as any, (req: AuthenticatedRequest, res: Response) => {
     res.json({ user: req.user });
 });
 
-app.post("/api/pre-interview", authMiddleware, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+app.post("/api/pre-interview", authMiddleware as any, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const validate = UrlsValidate.safeParse(req.body);
     if (!validate.success) {
-        res.status(411).json({ msg: "Invalid request parameters", errors: validate.error.errors });
+        res.status(411).json({ msg: "Invalid request parameters", errors: validate.error.issues });
         return;
     }
 
