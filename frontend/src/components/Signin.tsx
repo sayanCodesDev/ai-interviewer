@@ -25,7 +25,7 @@ export function Signin() {
                 password
             });
             toast.success("Successfully signed in!");
-            navigate(`/setup?userId=${response.data.userId}`);
+            navigate(`/form?userId=${response.data.userId}`);
         } catch (error: any) {
             const errorMsg = error.response?.data?.msg || "Invalid credentials. Please try again.";
             toast.error(errorMsg);

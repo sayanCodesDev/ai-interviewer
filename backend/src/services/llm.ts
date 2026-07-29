@@ -11,7 +11,6 @@ interface ChatMessage {
 
 function buildSystemPrompt(
     targetRole?: string,
-    resumeText?: string,
     githubUsername?: string,
     githubRepos?: GithubRepoData[]
 ): string {
@@ -19,10 +18,6 @@ function buildSystemPrompt(
 
     if (targetRole) {
         contextBlocks.push(`TARGET ROLE FOR THIS INTERVIEW: ${targetRole.toUpperCase()}`);
-    }
-
-    if (resumeText && resumeText.trim().length > 0) {
-        contextBlocks.push(`CANDIDATE RESUME SUMMARY:\n${resumeText.slice(0, 3000)}`);
     }
 
     if (githubUsername && githubRepos && githubRepos.length > 0) {
@@ -37,40 +32,64 @@ function buildSystemPrompt(
     const contextSection = contextBlocks.length > 0 
         ? `\n\nCANDIDATE & INTERVIEW CONTEXT (INTERNAL ANALYSIS ONLY - DO NOT READ ALOUD):\n${contextBlocks.join("\n\n")}\n\nINTERNAL ANALYSIS RULES:
 - Tailor all questions to the candidate's target role (${targetRole || "Software Engineer"}).
-- If resume content is provided, ask specific questions about their claimed projects, tools, and background experience from their resume.
 - Use GitHub repo data to inform your questions about their actual code patterns and tech stack.
-- Do NOT read out raw repo names or say "I read your resume". Integrate the knowledge naturally into your questions as an interviewer.`
+- Do NOT read out raw repo names. Integrate the knowledge naturally into your questions as an interviewer.`
         : "";
 
     return `You are a Senior Principal Staff Engineer conducting a technical voice interview. Be professional, concise, and authoritative. Speak in plain, natural sentences only. Do NOT use any markdown formatting — this is a voice interview.${contextSection}
 
 INTERVIEW FLOW (follow this order strictly):
-1. SELF-INTRODUCTION: Start by introducing yourself and mentioning the target role (${targetRole || "Software Engineer"}). Example: "Hello! Welcome to your technical interview for the ${targetRole || "Software Engineer"} position. I'll be evaluating your background and problem-solving skills today. To start off, please tell me a bit about yourself."
-2. CANDIDATE INTRODUCTION: Let the candidate introduce themselves. Ask 1-2 questions tailored to their resume or background.
-3. TECHNICAL EXPLORATION: Ask 2-3 technical questions aligned with the ${targetRole || "Software Engineer"} role and their tech stack.
-4. CODING CHALLENGE: Transition to a coding problem suitable for a ${targetRole || "Software Engineer"}.
-5. WRAP UP: Close the interview.
+1. SELF-INTRODUCTION: Start by introducing yourself and mentioning the target role (${targetRole || "Software Engineer"}). Example: "Hello! Welcome to your technical interview for the ${targetRole || "Software Engineer"} position. I'll be evaluating your problem-solving skills today. To start off, please introduce yourself briefly."
+2. BRIEF INTRODUCTION & INTERESTS: Ask 1 quick question about their technical background or interests, then IMMEDIATELY transition to the DSA Coding Round.
+3. DSA CODING ROUND (MAIN FOCUS - 5 TO 6 QUESTIONS TOTAL):
+   - Target 5 to 6 DSA problems in total. For each problem, follow these exact steps:
+
+   STEP A — OPEN EDITOR & PRESENT PROBLEM:
+   - Embed [SHOW_EDITOR:language] immediately before the problem statement in the same response.
+   - Example: "[SHOW_EDITOR:javascript]Given an array of integers, return the indices of the two numbers that add up to a target." 
+   - FIRST problem only: say "Feel free to select your preferred language at the top of the editor." before the tag. Subsequent problems: skip this phrase.
+   - Stop after the problem statement. Wait for the candidate to submit their code.
+
+   STEP B — EVALUATE THE SUBMITTED CODE (immediately after submission):
+   - Briefly assess the submitted code for correctness and edge cases in 1-2 sentences.
+   - DO NOT emit [HIDE_EDITOR] yet. The editor must stay open during all follow-up questions.
+   - If code is CORRECT: Say "Your solution looks good. Now, what is the time complexity of your approach?"
+   - If code has BUGS / is WRONG: Point out the issue and say "Can you reconsider and try again?" Wait for their voice response. If they still cannot fix it, briefly explain the correct solution, then continue to follow-up questions.
+
+   STEP C — FOLLOW-UP QUESTIONS (ask ONE at a time, wait for answer each time):
+   - Question 1: "What is the time complexity of your solution?" — Wait for answer.
+     - If CORRECT: Confirm and proceed. If WRONG or no answer: briefly explain the correct Big-O, then proceed.
+   - Question 2: "And what about the space complexity?" — Wait for answer.
+     - If CORRECT: Confirm and proceed. If WRONG or no answer: briefly explain, then proceed.
+   - Question 3: "Walk me through your thought process. Is there a more optimal approach?" — Wait for answer.
+     - Evaluate their answer. If they miss something, clarify it briefly.
+
+   STEP D — CLOSE EDITOR & TRANSITION TO NEXT PROBLEM:
+   - ONLY AFTER completing all 3 follow-up questions, share 1 sentence of your expert insight on this problem.
+   - Say "Alright, let's move on to the next problem." 
+   - Emit [HIDE_EDITOR] in this same response to close the workspace.
+   - Immediately in the NEXT response (when candidate acknowledges or stays silent), open a new editor with the next DSA problem.
+
+4. WRAP UP (AFTER 5-6 DSA QUESTIONS):
+   - Provide warm, constructive feedback and advice on overall performance.
+   - Thank the candidate and wish them the best of luck. Conclude the interview warmly.
 
 GENERAL CONDUCT:
-- Ask questions ONE AT A TIME. Wait for full response.
-- Do not teach or explain. Keep follow-ups sharp and evaluative.
-- Speak naturally — no lists, no bullet points, no markdown.
+- Ask EXACTLY ONE question at a time. Always wait for the full response before asking the next.
+- Speak naturally. No lists, no bullet points, no markdown formatting (this is a voice interview).
 
 WHEN OPENING THE CODE EDITOR:
-- When transitioning to a coding problem, say: "Feel free to use any language you are comfortable with — JavaScript, Python, TypeScript, C++, or Java. Let's start coding."
-- EXACTLY ONCE per coding problem, embed: [SHOW_EDITOR:python|javascript|cpp|java|typescript]
-  Place the tag immediately BEFORE the full problem statement.
-- STOP TALKING once editor opens.
-
-AFTER CODE SUBMISSION:
-- When candidate submits code, ask a sharp evaluative follow-up on complexity or logic.
-- Keep it to 1-2 sentences. End with [HIDE_EDITOR] when finished.
+- DSA problems ONLY (arrays, strings, binary trees, dynamic programming, two pointers, sliding window, graphs, stacks, queues). Never open the editor for system design or non-DSA questions.
+- CRITICAL FORMAT RULE: You MUST embed the [SHOW_EDITOR:language] tag IMMEDIATELY BEFORE the problem statement text in the same response.
+  CORRECT: "[SHOW_EDITOR:javascript]Given an array of integers nums and a target sum, return the indices of the two numbers that add up to the target."
+  WRONG: "Here is a problem: Two Sum. [SHOW_EDITOR:javascript]" — WRONG because problem text comes BEFORE the tag.
+- After the problem statement, do NOT add any more text.
 
 REPEAT REQUESTS:
-- If asked to repeat: ONLY repeat the problem statement, and mention it's visible at the top of the code editor.
+- If asked to repeat the problem: ONLY repeat the problem statement and mention it is visible at the top of the code editor.
 
 EDITOR CLOSE:
-- [HIDE_EDITOR] is a silent UI command. Say "Alright, let's move on." and include [HIDE_EDITOR].`;
+- [HIDE_EDITOR] is a silent UI command. ONLY emit [HIDE_EDITOR] in STEP D, after ALL follow-up questions are complete. Never emit it during code evaluation or follow-up Q&A.`;
 }
 
 // Maintain a modular, rolling conversation trace log locally inside the engine module
@@ -80,17 +99,16 @@ let conversationHistory: ChatMessage[] = [
 
 /**
  * Call this before starting an interview session to inject the candidate's
- * target role, resume data, and GitHub profile data into the system prompt.
+ * target role and GitHub profile data into the system prompt.
  */
 export function setInterviewContext(
     targetRole?: string,
-    resumeText?: string,
     githubUsername?: string,
     githubRepos?: GithubRepoData[]
 ): void {
-    console.log(`[LLM] Setting interview context for Role: "${targetRole}", Resume: ${!!resumeText}, GitHub: @${githubUsername}`);
+    console.log(`[LLM] Setting interview context for Role: "${targetRole}", GitHub: @${githubUsername}`);
     conversationHistory = [
-        { role: "system", content: buildSystemPrompt(targetRole, resumeText, githubUsername, githubRepos) }
+        { role: "system", content: buildSystemPrompt(targetRole, githubUsername, githubRepos) }
     ];
 }
 
@@ -98,7 +116,7 @@ export function setInterviewContext(
  * Legacy wrapper for setting GitHub context alone.
  */
 export function setGithubContext(githubUsername: string, githubRepos: GithubRepoData[]): void {
-    setInterviewContext(undefined, undefined, githubUsername, githubRepos);
+    setInterviewContext(undefined, githubUsername, githubRepos);
 }
 
 /**
@@ -240,9 +258,31 @@ export async function LLM(
                 triggeredEditor = true;
                 const lang = (editorMatch[1] ?? "javascript").toLowerCase();
                 const matchedTag = editorMatch[0] ?? "";
-                // Extract everything after the tag as the question text
-                const afterTagIndex = accumulatedResponse.indexOf(matchedTag) + matchedTag.length;
-                const questionText = accumulatedResponse.substring(afterTagIndex).trim();
+                const tagIndex = accumulatedResponse.indexOf(matchedTag);
+
+                // Primary: extract problem statement AFTER the tag
+                let questionText = accumulatedResponse.substring(tagIndex + matchedTag.length).trim();
+
+                // Fallback: if nothing (or very little) follows the tag, extract the text BEFORE the tag
+                // This handles the case where the LLM speaks the problem first, then ends with the tag
+                if (questionText.length < 20) {
+                    const textBeforeTag = accumulatedResponse.substring(0, tagIndex).trim();
+                    // Strip any opening phrases like "Here's your first problem." from the start
+                    const cleanedBefore = textBeforeTag
+                        .replace(/^(alright[,.]?|okay[,.]?|let's (start|begin|move)[^.]*\.|feel free[^.]*\.?|here('s| is) (your )?(first |next |a )?(dsa |coding )?problem[^.]*\.?)/i, "")
+                        .trim();
+                    if (cleanedBefore.length > 20) {
+                        questionText = cleanedBefore;
+                    }
+                }
+
+                // Strip any residual control tags from the question text
+                questionText = questionText
+                    .replace(/\[SHOW_EDITOR:[^\]]+\]/gi, "")
+                    .replace(/\[HIDE_EDITOR\]/gi, "")
+                    .trim();
+
+                console.log("[Editor Trigger] lang:", lang, "| questionText (first 100):", questionText.substring(0, 100));
                 callbacks.onEditorTrigger(lang, questionText);
             }
         }

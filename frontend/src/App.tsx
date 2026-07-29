@@ -19,7 +19,7 @@ export function App() {
           <Route path="/signin" element={<Signin />} />
           <Route path="/signup" element={<Signup />} />
 
-          <Route path="/setup" element={
+          <Route path="/form" element={
             <ProtectedRoute>
               <Form />
             </ProtectedRoute>

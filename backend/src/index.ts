@@ -4,7 +4,7 @@ import type { Request, Response, NextFunction } from "express";
 import { UrlsValidate } from "./validate";
 import cors from "cors";
 import { GithubScrape } from "./GithubScrape";
-import { setInterviewContext, setGithubContext, resetConversation } from "./services/llm";
+import { setInterviewContext, resetConversation } from "./services/llm";
 import Router from "./serverWebrtc";
 import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
@@ -156,7 +156,7 @@ app.post("/api/pre-interview", authMiddleware as any, async (req: AuthenticatedR
         return;
     }
 
-    const { githubUrl, targetRole, resumeText } = validate.data;
+    const { githubUrl, targetRole } = validate.data;
 
     // Extract github username if present
     const githubUrlUsername = githubUrl
@@ -176,10 +176,10 @@ app.post("/api/pre-interview", authMiddleware as any, async (req: AuthenticatedR
         }
     }
 
-    // Set full interview context (Target Role, Resume, GitHub)
-    setInterviewContext(targetRole, resumeText, githubUrlUsername, githubRepos);
+    // Set interview context (Target Role + GitHub)
+    setInterviewContext(targetRole, githubUrlUsername, githubRepos);
 
-    res.json({ githubUrlUsername, targetRole, hasResume: !!resumeText });
+    res.json({ githubUrlUsername, targetRole });
 });
 
 

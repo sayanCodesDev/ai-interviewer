@@ -12,16 +12,20 @@ export function Navbar() {
     const [searchParams] = useSearchParams();
     const userId = searchParams.get("userId");
     const [name, setName] = useState<string>("");
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
 
     useEffect(() => {
         async function fetchUser() {
             try {
-                const response = await axios.get(`${BACKEND_URL}/api/auth/me`);
+                const response = await axios.get(`${BACKEND_URL}/api/auth/me`, { withCredentials: true });
                 if (response.data && response.data.user) {
                     setName(response.data.user.name || "User");
+                    setIsLoggedIn(true);
+                } else {
+                    setIsLoggedIn(false);
                 }
             } catch (err) {
-                // Not authenticated
+                setIsLoggedIn(false);
             }
         }
         fetchUser();
@@ -66,26 +70,28 @@ export function Navbar() {
                         {theme === "light" ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5 text-yellow-400" />}
                     </button>
 
-                    {/* Profile Badge */}
-                    {name && (
-                        <div className="flex items-center gap-2.5 bg-[#f0f4f8] dark:bg-[#1c1e2d] border border-[#e2e8f0] dark:border-[#1e293b] px-3.5 py-1.5 rounded-full shadow-sm">
-                            <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shadow-sm">
-                                {initials}
-                            </div>
-                            <span className="text-sm font-semibold text-[#2c3e50] dark:text-[#e2e8f0] max-w-[120px] truncate">
-                                {name}
-                            </span>
-                        </div>
+                    {/* Profile Badge + Logout — only when logged in */}
+                    {isLoggedIn && (
+                        <>
+                            {name && (
+                                <div className="flex items-center gap-2.5 bg-[#f0f4f8] dark:bg-[#1c1e2d] border border-[#e2e8f0] dark:border-[#1e293b] px-3.5 py-1.5 rounded-full shadow-sm">
+                                    <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shadow-sm">
+                                        {initials}
+                                    </div>
+                                    <span className="text-sm font-semibold text-[#2c3e50] dark:text-[#e2e8f0] max-w-[120px] truncate">
+                                        {name}
+                                    </span>
+                                </div>
+                            )}
+                            <button
+                                onClick={handleLogout}
+                                className="flex items-center gap-1.5 text-sm font-semibold text-[#5a6e85] dark:text-[#a0aec0] hover:text-red-500 dark:hover:text-red-400 border border-[#e2e8f0] dark:border-[#1e293b] bg-white/80 dark:bg-[#1c1e2d]/80 hover:bg-[#f8fafc] dark:hover:bg-[#25283c] px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 shadow-sm"
+                            >
+                                <LogOut className="w-4 h-4" />
+                                <span className="hidden sm:inline">Log Out</span>
+                            </button>
+                        </>
                     )}
-
-                    {/* Log Out */}
-                    <button
-                        onClick={handleLogout}
-                        className="flex items-center gap-1.5 text-sm font-semibold text-[#5a6e85] dark:text-[#a0aec0] hover:text-red-500 dark:hover:text-red-400 border border-[#e2e8f0] dark:border-[#1e293b] bg-white/80 dark:bg-[#1c1e2d]/80 hover:bg-[#f8fafc] dark:hover:bg-[#25283c] px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 shadow-sm"
-                    >
-                        <LogOut className="w-4 h-4" />
-                        <span className="hidden sm:inline">Log Out</span>
-                    </button>
                 </div>
             </div>
         </header>

@@ -5,7 +5,7 @@ import { BACKEND_URL } from "../lib/config";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Navbar } from "./Navbar";
 import { AnimatedBackground } from "./AnimatedBackground";
-import { Upload, FileText, CheckCircle, Briefcase, GitBranch } from "lucide-react";
+import { Briefcase, GitBranch } from "lucide-react";
 
 export function Form() {
     const navigate = useNavigate();
@@ -14,8 +14,6 @@ export function Form() {
 
     const [targetRole, setTargetRole] = useState("Full Stack Developer");
     const [githubUrl, setGithubUrl] = useState("");
-    const [resumeText, setResumeText] = useState("");
-    const [fileName, setFileName] = useState("");
     const [loading, setLoading] = useState(false);
 
     const rolesList = [
@@ -28,21 +26,7 @@ export function Form() {
         "System Architect / Tech Lead"
     ];
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
 
-        setFileName(file.name);
-
-        // Read text/plain files directly, or extract text from simple documents
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const content = event.target?.result as string;
-            setResumeText(content || "");
-            toast.success(`Resume uploaded: ${file.name}`);
-        };
-        reader.readAsText(file);
-    };
 
     async function submit() {
         if (!targetRole) {
@@ -55,8 +39,7 @@ export function Form() {
         try {
             await axios.post(`${BACKEND_URL}/api/pre-interview`, {
                 targetRole,
-                githubUrl: githubUrl.trim() || undefined,
-                resumeText: resumeText.trim() || undefined
+                githubUrl: githubUrl.trim() || undefined
             });
             navigate(`/interview?userId=${userId || ""}`);
         } catch (err: any) {
@@ -119,48 +102,7 @@ export function Form() {
                             />
                         </div>
 
-                        {/* Resume File Upload (Optional) */}
-                        <div className="flex flex-col gap-1.5">
-                            <label className="text-xs font-semibold uppercase tracking-wider text-[#5a6e85] dark:text-[#a0aec0] flex items-center gap-1.5">
-                                <FileText className="w-3.5 h-3.5 text-blue-500" />
-                                Resume / CV (Optional - Plain Text / Markdown / PDF)
-                            </label>
-                            <div className="relative border-2 border-dashed border-[#e2e8f0] dark:border-[#2e324a] hover:border-blue-500 dark:hover:border-sky-400 rounded-xl p-4 transition-colors flex flex-col items-center justify-center gap-2 bg-[#f8fafc]/50 dark:bg-[#1c1e2d]/50 cursor-pointer text-center group">
-                                <input
-                                    type="file"
-                                    accept=".txt,.md,.json,.pdf,.doc,.docx"
-                                    onChange={handleFileUpload}
-                                    className="absolute inset-0 opacity-0 cursor-pointer z-20"
-                                />
-                                {fileName ? (
-                                    <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium text-sm">
-                                        <CheckCircle className="w-4 h-4" />
-                                        <span>{fileName}</span>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <Upload className="w-6 h-6 text-gray-400 group-hover:text-blue-500 transition-colors" />
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                                            <span className="font-semibold text-blue-600 dark:text-sky-400">Click to upload</span> or drag and drop
-                                        </p>
-                                    </>
-                                )}
-                            </div>
-                        </div>
 
-                        {/* Manual Resume Text Area (Fallback) */}
-                        <div className="flex flex-col gap-1.5">
-                            <label className="text-xs font-semibold uppercase tracking-wider text-[#5a6e85] dark:text-[#a0aec0]">
-                                Or Paste Resume Summary / Experience
-                            </label>
-                            <textarea
-                                rows={3}
-                                className="w-full bg-[#f8fafc] dark:bg-[#1c1e2d] border border-[#e2e8f0] dark:border-[#2e324a] rounded-lg p-3 text-xs text-[#2c3e50] dark:text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-all duration-200"
-                                placeholder="Paste key projects, skills, or experience here..."
-                                value={resumeText}
-                                onChange={(e) => setResumeText(e.target.value)}
-                            />
-                        </div>
 
                         <button 
                             className="w-full mt-2 bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-500 hover:to-sky-400 text-white font-semibold text-sm py-3 px-4 rounded-lg cursor-pointer transition-all shadow-[0_4px_20px_rgba(37,99,235,0.15)] hover:shadow-[0_4px_25px_rgba(37,99,235,0.25)] active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"

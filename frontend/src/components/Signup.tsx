@@ -27,7 +27,7 @@ export function Signup() {
                 password
             });
             toast.success("Successfully registered! Signing you in...");
-            navigate(`/setup?userId=${response.data.userId}`);
+            navigate(`/form?userId=${response.data.userId}`);
         } catch (error: any) {
             const errorMsg = error.response?.data?.msg || "Failed to sign up. Please try again.";
             toast.error(errorMsg);

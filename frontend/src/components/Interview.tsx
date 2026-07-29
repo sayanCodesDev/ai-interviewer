@@ -44,13 +44,12 @@ export function Interview() {
                     console.log("📩 Received DataChannel message:", data);
                     if (data.type === "SHOW_CODE_EDITOR") {
                         setEditorLanguage(data.language || "javascript");
-                        if (data.question) {
-                            setQuestionPrompt(data.question);
-                        }
+                        setQuestionPrompt(data.question || "");
                         setShowCodeEditor(true);
                     } else if (data.type === "HIDE_CODE_EDITOR") {
                         console.log("AI requested closing code editor.");
                         setShowCodeEditor(false);
+                        setQuestionPrompt(""); // clear so next question starts fresh
                     }
                 } catch (e) {
                     console.error("DataChannel JSON error:", e);
@@ -236,10 +235,10 @@ export function Interview() {
 
                     <audio ref={audioRef} autoPlay playsInline />
 
-                    <div className={`flex ${showCodeEditor ? "flex-col gap-6" : "flex-col md:flex-row gap-8 md:gap-16"} justify-center items-center w-full z-10 max-w-4xl my-auto py-4 transition-all duration-300`}>
+                    <div className={`flex ${showCodeEditor ? "flex-col sm:flex-row lg:flex-col gap-6" : "flex-col md:flex-row gap-8 md:gap-16"} justify-center items-center w-full z-10 max-w-4xl my-auto py-4 transition-all duration-300`}>
                         {/* AI Avatar with dynamic pulsing aura */}
                         <div className="flex flex-col items-center gap-3">
-                            <img className={`${showCodeEditor ? "w-[140px] sm:w-[170px]" : "w-[180px] sm:w-[240px] md:w-[280px]"} aspect-square object-cover rounded-2xl border-4 border-white dark:border-[#2b2e42] shadow-[0_8px_30px_rgb(0,0,0,0.06)] transition-all duration-300 bg-white/50 dark:bg-[#161822]/50 p-2`}
+                            <img className={`${showCodeEditor ? "w-[190px] sm:w-[220px] lg:w-[230px]" : "w-[180px] sm:w-[240px] md:w-[280px]"} aspect-square object-cover rounded-2xl border-4 border-white dark:border-[#2b2e42] shadow-[0_8px_30px_rgb(0,0,0,0.06)] transition-all duration-300 bg-white/50 dark:bg-[#161822]/50 p-2`}
                                 style={{
                                     transform: `scale(${1 + (aiVolume / 1000)})`,
                                     boxShadow: aiVolume > 0
@@ -250,7 +249,7 @@ export function Interview() {
                         </div>
 
                         <div className="flex flex-col items-center gap-3">
-                            <img className={`${showCodeEditor ? "w-[140px] sm:w-[170px]" : "w-[180px] sm:w-[240px] md:w-[280px]"} aspect-square object-cover rounded-2xl border-4 border-white dark:border-[#2b2e42] shadow-[0_8px_30px_rgb(0,0,0,0.06)] transition-all duration-300 bg-white/50 dark:bg-[#161822]/50 p-2`}
+                            <img className={`${showCodeEditor ? "w-[190px] sm:w-[220px] lg:w-[230px]" : "w-[180px] sm:w-[240px] md:w-[280px]"} aspect-square object-cover rounded-2xl border-4 border-white dark:border-[#2b2e42] shadow-[0_8px_30px_rgb(0,0,0,0.06)] transition-all duration-300 bg-white/50 dark:bg-[#161822]/50 p-2`}
                                 style={{
                                     transform: `scale(${1 + (userVolume / 1000)})`,
                                     boxShadow: userVolume > 0

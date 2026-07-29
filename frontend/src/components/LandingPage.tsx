@@ -42,7 +42,7 @@ export function LandingPage() {
         try {
             const response = await axios.get(`${BACKEND_URL}/api/auth/me`);
             if (response.data && response.data.user) {
-                navigate(`/setup?userId=${response.data.user.id}`);
+                navigate(`/form?userId=${response.data.user.id}`);
             } else {
                 navigate("/signin");
             }
