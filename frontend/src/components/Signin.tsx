@@ -25,8 +25,7 @@ export function Signin() {
                 password
             });
             toast.success("Successfully signed in!");
-            // Redirect to home page with query param userId
-            navigate(`/?userId=${response.data.userId}`);
+            navigate(`/setup?userId=${response.data.userId}`);
         } catch (error: any) {
             const errorMsg = error.response?.data?.msg || "Invalid credentials. Please try again.";
             toast.error(errorMsg);

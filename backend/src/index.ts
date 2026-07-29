@@ -4,7 +4,7 @@ import type { Request, Response, NextFunction } from "express";
 import { UrlsValidate } from "./validate";
 import cors from "cors";
 import { GithubScrape } from "./GithubScrape";
-import { setGithubContext, resetConversation } from "./services/llm";
+import { setInterviewContext, setGithubContext, resetConversation } from "./services/llm";
 import Router from "./serverWebrtc";
 import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
@@ -17,8 +17,13 @@ const JWT_SECRET = process.env.JWT_SECRET || "ai-interviewer-secret-key-12345";
 
 app.use(express.json());
 app.use(cookieParser());
+
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(",").map(o => o.trim())
+    : ["http://localhost:3000", "http://localhost:5173", "http://localhost:4173", "http://127.0.0.1:3000"];
+
 app.use(cors({
-    origin: ["http://localhost:3000", "http://localhost:5173"],
+    origin: allowedOrigins,
     credentials: true
 }));
 
@@ -77,8 +82,8 @@ app.post("/api/auth/signup", async (req: Request, res: Response): Promise<void> 
 
         res.cookie("token", token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
+            secure: false,
+            sameSite: "none",
             maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
         });
 
@@ -118,8 +123,8 @@ app.post("/api/auth/signin", async (req: Request, res: Response): Promise<void> 
 
         res.cookie("token", token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
+            secure: false,
+            sameSite: "none",
             maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
         });
 
@@ -145,39 +150,38 @@ app.get("/api/auth/me", authMiddleware, (req: AuthenticatedRequest, res: Respons
 });
 
 app.post("/api/pre-interview", authMiddleware, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    const validate = UrlsValidate.safeParse(req.body)
+    const validate = UrlsValidate.safeParse(req.body);
     if (!validate.success) {
-        res.status(411).json({ msg: "Urls are not correct", validate })
+        res.status(411).json({ msg: "Invalid request parameters", errors: validate.error.errors });
         return;
     }
-    const githubUrl = validate.data?.githubUrl
-    const linkedinUrl = validate.data?.linkedinUrl
 
-    // Extract usernames
-    const githubUrlUsername = githubUrl?.endsWith("/") ? githubUrl?.split("/").slice(0, -1).pop() : githubUrl?.split("/").pop()
-    const linkedinUrlUsername = linkedinUrl?.endsWith("/") ? linkedinUrl?.split("/").slice(0, -1).pop() : linkedinUrl?.split("/").pop()
+    const { githubUrl, targetRole, resumeText } = validate.data;
+
+    // Extract github username if present
+    const githubUrlUsername = githubUrl
+        ? (githubUrl.endsWith("/") ? githubUrl.split("/").slice(0, -1).pop() : githubUrl.split("/").pop())
+        : undefined;
 
     // Reset conversation history for fresh session
     resetConversation();
 
-    // Scrape GitHub and inject into LLM context (non-blocking — continue if it fails)
+    let githubRepos: any[] = [];
     if (githubUrlUsername) {
         try {
             console.log(`[Pre-Interview] Scraping GitHub for @${githubUrlUsername}...`);
-            const githubRepos = await GithubScrape(githubUrlUsername);
-            if (githubRepos.length > 0) {
-                setGithubContext(githubUrlUsername, githubRepos);
-                console.log(`[Pre-Interview] GitHub context injected: ${githubRepos.length} repos`);
-            } else {
-                console.log(`[Pre-Interview] No repos found for @${githubUrlUsername}`);
-            }
+            githubRepos = await GithubScrape(githubUrlUsername);
         } catch (err: any) {
             console.error("[Pre-Interview] GitHub scrape failed:", err.message);
         }
     }
 
-    res.json({ githubUrlUsername, linkedinUrlUsername })
-})
+    // Set full interview context (Target Role, Resume, GitHub)
+    setInterviewContext(targetRole, resumeText, githubUrlUsername, githubRepos);
+
+    res.json({ githubUrlUsername, targetRole, hasResume: !!resumeText });
+});
+
 
 app.post("/api/execute-code", async (req: Request, res: Response): Promise<void> => {
     try {

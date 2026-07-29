@@ -5,10 +5,13 @@
  * It is included in `src/index.html`.
  */
 
-
 import { createRoot } from "react-dom/client";
 import { App } from "./App.js";
 import { RecoilRoot } from "recoil";
+import axios from "axios";
+
+// Send cookies with every request globally (needed for JWT auth on all pages)
+axios.defaults.withCredentials = true;
 
 const elem = document.getElementById("root")!;
 const app = (
