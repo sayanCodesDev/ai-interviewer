@@ -1,0 +1,25 @@
+# Ignore plans directory
+plans/
+plans
+
+# Environment & Local Config
+.env
+.env.local
+.env.production
+*.env
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# System & OS files
+.DS_Store
+Thumbs.db
+
+# IDEs & Editors
+.vscode/
+.idea/
+.cursor/
