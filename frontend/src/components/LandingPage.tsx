@@ -250,14 +250,14 @@ export function LandingPage() {
             {/* FOOTER */}
             <footer className="mt-auto py-8 border-t border-slate-200 dark:border-slate-800 text-center text-xs text-slate-500 dark:text-slate-400">
                 <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-4">
-                    <p>© {new Date().getFullYear()} AI Interviewer Platform. Built for developers worldwide.</p>
+                    <p>© {new Date().getFullYear()} AI Interviewer. Copyright by Sayan Ojha.</p>
                     <div className="flex gap-6">
                         <a href="#features" className="hover:underline">Features</a>
                         <button onClick={handleStartSession} className="hover:underline">Interview Setup</button>
                     </div>
                 </div>
-
             </footer>
+
         </div>
     );
 }
