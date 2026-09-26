@@ -38,6 +38,8 @@ const schema = z.object({
     GROQ_API_KEY: optionalString,
     GROQ_MODEL: z.string().default("qwen/qwen3.8-27b"),
     GROQ_EVAL_MODEL: optionalString,
+    /** Optional. Raises GitHub's anonymous 60-requests-an-hour limit when reading candidates' public repositories. */
+    GITHUB_TOKEN: optionalString,
 
     CODE_RUNNER: z.enum(["auto", "docker", "local"]).default("auto"),
     RUNNER_IMAGE: z.string().default("ai-interviewer-runner:latest"),
@@ -79,6 +81,7 @@ export interface AppConfig {
     groqApiKey?: string;
     groqModel: string;
     groqEvalModel: string;
+    githubToken?: string;
 
     codeRunner: "auto" | "docker" | "local";
     runnerImage: string;
@@ -188,7 +191,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env, warn: (messa
         deepgramApiKey: raw.DEEPGRAM_API_KEY,
         groqApiKey: raw.GROQ_API_KEY,
         groqModel: raw.GROQ_MODEL,
-        groqEvalModel: raw.GROQ_EVAL_MODEL ?? raw.GROQ_MODEL,
+        groqEvalModel: raw.GROQ_EVAL_MODEL ?? "openai/gpt-oss-120b",
+        githubToken: raw.GITHUB_TOKEN,
 
         codeRunner: raw.CODE_RUNNER,
         runnerImage: raw.RUNNER_IMAGE,
