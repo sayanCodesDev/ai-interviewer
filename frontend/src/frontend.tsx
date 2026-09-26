@@ -5,12 +5,21 @@
  * It is included in `src/index.html`.
  */
 
+import "./index.css";
 import "./fonts.css";
-import { createRoot } from "react-dom/client";
+import { createRoot, hydrateRoot } from "react-dom/client";
 import { App } from "./App.js";
 
 const elem = document.getElementById("root")!;
 const app = <App />;
 
-// https://bun.com/docs/bundler/hot-reloading#import-meta-hot-data
-(import.meta.hot.data.root ??= createRoot(elem)).render(app);
+// Public pages ship prerendered (see prerender.ts): attach to that HTML instead of replacing it.
+// Everything else starts from an empty shell and renders from scratch.
+if (import.meta.hot) {
+  // https://bun.com/docs/bundler/hot-reloading#import-meta-hot-data
+  (import.meta.hot.data.root ??= createRoot(elem)).render(app);
+} else if (elem.hasChildNodes()) {
+  hydrateRoot(elem, app);
+} else {
+  createRoot(elem).render(app);
+}

@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma";
 import { config } from "../config/env";
+import { RateLimitedError } from "../llm/client";
 import { logger } from "../observability/logger";
 import { reportsGenerated } from "../observability/metrics";
 import { generateReport } from "./report";
@@ -41,12 +42,33 @@ export async function claimNextReport(): Promise<string | null> {
     return rows[0]?.id ?? null;
 }
 
-async function process(id: string): Promise<void> {
+/** Generates one claimed report and records the outcome. Exported for tests. */
+export async function processReport(id: string): Promise<void> {
     try {
         await generateReport(id);
         reportsGenerated.inc({ outcome: "ok" });
         logger.info({ interviewId: id }, "Report generated");
     } catch (error) {
+        if (error instanceof RateLimitedError) {
+            // The model provider is out of allowance (a daily limit, on a free key). That isn't the report's fault, so
+            // it doesn't use up one of its attempts: it waits, stays pending, and is claimed again once the wait is over.
+            reportsGenerated.inc({ outcome: "deferred" });
+            const waitMs = Math.min(Math.max(error.retryAfterMs, 60_000), 30 * 60_000);
+            logger.warn({ interviewId: id, retryInSeconds: Math.round(waitMs / 1000) }, "Report deferred: the language model has no capacity");
+            const claimed = await prisma.interview.findUnique({ where: { id }, select: { reportAttempts: true } });
+            await prisma.interview.update({
+                where: { id },
+                data: {
+                    reportStatus: "PENDING",
+                    // Hand the attempt back, but never to zero: the claim query treats "zero attempts" as "claim now".
+                    reportAttempts: Math.max(1, (claimed?.reportAttempts ?? 1) - 1),
+                    reportError: "Waiting for the AI provider's capacity to recover.",
+                    // In the future, so the claim query leaves it alone until the wait is over (plus the usual backoff).
+                    updatedAt: new Date(Date.now() + waitMs),
+                },
+            });
+            return;
+        }
         reportsGenerated.inc({ outcome: "error" });
         logger.error({ err: error, interviewId: id }, "Report generation failed");
         const row = await prisma.interview.findUnique({ where: { id }, select: { reportAttempts: true } });
@@ -65,7 +87,7 @@ async function tick(): Promise<void> {
             const id = await claimNextReport();
             if (!id) break;
             running++;
-            void process(id).finally(() => {
+            void processReport(id).finally(() => {
                 running--;
                 if (!stopped) setImmediate(() => void tick());
             });

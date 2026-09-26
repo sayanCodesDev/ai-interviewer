@@ -1,32 +1,24 @@
 import { serve } from "bun";
+import { join, normalize } from "node:path";
 import index from "./index.html";
+
+// Monaco (the code editor) is served from this origin instead of a public CDN. `bun run build`
+// copies the same files into dist/monaco for static hosting.
+const MONACO_ROOT = join(import.meta.dir, "..", "node_modules", "monaco-editor", "min");
 
 const server = serve({
   routes: {
+    "/monaco/*": async (req) => {
+      const relative = decodeURIComponent(new URL(req.url).pathname.slice("/monaco/".length));
+      const file = normalize(join(MONACO_ROOT, relative));
+      // Never serve anything outside the editor's own folder.
+      if (!file.startsWith(MONACO_ROOT)) return new Response("Not found", { status: 404 });
+      const asset = Bun.file(file);
+      return (await asset.exists()) ? new Response(asset) : new Response("Not found", { status: 404 });
+    },
+
     // Serve index.html for all unmatched routes.
     "/*": index,
-
-    "/api/hello": {
-      async GET(req) {
-        return Response.json({
-          message: "Hello, world!",
-          method: "GET",
-        });
-      },
-      async PUT(req) {
-        return Response.json({
-          message: "Hello, world!",
-          method: "PUT",
-        });
-      },
-    },
-
-    "/api/hello/:name": async req => {
-      const name = req.params.name;
-      return Response.json({
-        message: `Hello, ${name}!`,
-      });
-    },
   },
 
   development: process.env.NODE_ENV !== "production" && {

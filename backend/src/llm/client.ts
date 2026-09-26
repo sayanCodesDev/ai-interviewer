@@ -43,7 +43,8 @@ export function reasoningParams(model: string, level: ReasoningLevel): Record<st
 }
 
 export class RateLimitedError extends Error {
-    constructor(message = "The language model is busy. Try again in a moment.") {
+    /** How long until some model is likely to have room again. Large when a daily allowance is used up. */
+    constructor(public readonly retryAfterMs = 0, message = "The language model is busy. Try again in a moment.") {
         super(message);
         this.name = "RateLimitedError";
     }
@@ -56,6 +57,7 @@ class HttpFailure extends Error {
 }
 
 const router = new ModelRouter(config.llmTpmLimit);
+const DAILY_COOLDOWN_CAP_MS = 30 * 60_000;
 /** Models that rejected reasoning parameters; remember and stop sending them. */
 const rejectedReasoning = new Set<string>();
 
@@ -125,7 +127,9 @@ async function send(messages: ChatMessage[], options: CompletionOptions, stream:
 
         if (!model) {
             const wait = Math.min(router.waitMs(chain.filter((m) => !failed.has(m)), tokens), 15_000);
-            if (Date.now() + wait > deadline || failed.size >= chain.length) throw lastError instanceof HttpFailure && lastError.status !== 429 ? lastError : new RateLimitedError();
+            if (Date.now() + wait > deadline || failed.size >= chain.length) {
+                throw lastError instanceof HttpFailure && lastError.status !== 429 ? lastError : new RateLimitedError(router.availability(chain).retryAfterMs);
+            }
             await new Promise((resolve) => setTimeout(resolve, Math.max(150, wait)));
             failed.clear();
             continue;
@@ -141,8 +145,12 @@ async function send(messages: ChatMessage[], options: CompletionOptions, stream:
             if (options.signal?.aborted) throw error;
             const status = error instanceof HttpFailure ? error.status : undefined;
             if (status === 429) {
-                router.cooldown(model, Math.min(Math.max(error instanceof HttpFailure ? (error.retryAfterMs ?? 20_000) : 20_000, 1_000), 60_000));
-                logger.warn({ model }, "Model is rate limited; trying another");
+                // Per-minute limits clear within a minute. A per-day limit (free Groq keys get 200,000 tokens a day
+                // per model) clears as the day's usage ages out, and hammering it meanwhile only wastes requests.
+                const daily = error instanceof HttpFailure && /per day|\((?:TPD|RPD)\)/i.test(error.message);
+                const wanted = error instanceof HttpFailure ? (error.retryAfterMs ?? 20_000) : 20_000;
+                router.cooldown(model, Math.min(Math.max(wanted, 1_000), daily ? DAILY_COOLDOWN_CAP_MS : 60_000));
+                logger.warn({ model, retryAfterMs: error instanceof HttpFailure ? error.retryAfterMs : undefined, detail: error instanceof Error ? error.message.slice(0, 220) : undefined }, "Model is rate limited; trying another");
             } else if (status !== undefined && status >= 500) {
                 router.cooldown(model, 5_000);
                 failed.add(model);
@@ -217,6 +225,12 @@ export function setLlmForTesting(client: LlmClient | null): void {
 
 /** The models in use. The evaluation model may be swapped for the dialogue model at boot if it isn't available. */
 export const models = { dialogue: config.groqModel, evaluation: config.groqEvalModel, fallbacks: config.llmFallbackModels };
+
+/** Whether the interviewer could get an answer from the language model right now, for refusing a new call early. */
+export function llmCapacity(): { available: boolean; retryAfterSeconds: number } {
+    const { available, retryAfterMs } = router.availability([models.dialogue, ...models.fallbacks]);
+    return { available, retryAfterSeconds: Math.ceil(retryAfterMs / 1000) };
+}
 
 export async function verifyModels(): Promise<void> {
     if (!config.llmApiKey) return;

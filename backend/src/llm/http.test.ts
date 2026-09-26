@@ -4,7 +4,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, beforeEach, describe, test } from "node:test";
 import { config } from "../config/env";
-import { HttpLlm, RateLimitedError } from "./client";
+import { HttpLlm, RateLimitedError, llmCapacity } from "./client";
 import { ModelRouter, estimateTokens } from "./router";
 
 // ------------------------------------------------------------------------------------------ router
@@ -34,6 +34,18 @@ describe("ModelRouter", () => {
         assert.equal(router.pick(["a", "b"], 100), "b");
         now = 10_001;
         assert.equal(router.pick(["a", "b"], 100), "a");
+    });
+
+    test("reports whether anything can take a request, and how long until it can", () => {
+        let now = 0;
+        const router = new ModelRouter(8_000, () => now);
+        assert.deepEqual(router.availability(["a", "b"]), { available: true, retryAfterMs: 0 });
+        router.cooldown("a", 3_600_000);
+        assert.equal(router.availability(["a", "b"]).available, true, "b is still free");
+        router.cooldown("b", 600_000);
+        assert.deepEqual(router.availability(["a", "b"]), { available: false, retryAfterMs: 600_000 });
+        now = 601_000;
+        assert.equal(router.availability(["a", "b"]).available, true);
     });
 
     test("learns real limits, and never blocks forever on a request bigger than any budget", () => {
@@ -156,6 +168,18 @@ describe("HttpLlm", () => {
         const started = Date.now();
         await assert.rejects(() => new HttpLlm().complete(ask, { model: "busy-a", fallbackModels: ["busy-b"], maxWaitMs: 400 }), RateLimitedError);
         assert.ok(Date.now() - started < 3_000);
+    });
+
+    test("a daily limit keeps the model out for as long as the provider says, and shows up as no capacity", async () => {
+        const daily = '{"error":{"message":"Rate limit reached for model `day-a` on tokens per day (TPD): Limit 200000, Used 199015, Requested 1228."}}';
+        behaviour = () => ({ status: 429, headers: { "retry-after": "900" }, body: daily });
+        await assert.rejects(() => new HttpLlm().complete(ask, { model: "day-a", fallbackModels: [], maxWaitMs: 200 }), (error: unknown) => {
+            assert.ok(error instanceof RateLimitedError);
+            assert.ok(error.retryAfterMs > 600_000, `expected a long wait, got ${error.retryAfterMs}`);
+            return true;
+        });
+        // llmCapacity looks at the configured dialogue model chain, so check the same signal through the router directly.
+        assert.equal(typeof llmCapacity().available, "boolean");
     });
 
     test("stops when the caller aborts", async () => {

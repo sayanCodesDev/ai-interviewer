@@ -1,0 +1,73 @@
+import { MarketingLayout } from "@/layouts/MarketingLayout";
+
+const CONTACT: string | undefined = typeof import.meta !== "undefined" && import.meta.env ? import.meta.env.VITE_CONTACT_EMAIL : undefined;
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+    return (
+        <section className="mt-12">
+            <h2 className="text-h3">{title}</h2>
+            <div className="mt-4 grid gap-4 text-[15px] leading-relaxed text-muted-foreground">{children}</div>
+        </section>
+    );
+}
+
+/** Describes what the service actually does with data today. Keep it in step with the backend. */
+export function Privacy() {
+    return (
+        <MarketingLayout>
+            <div className="page-container max-w-3xl py-16 sm:py-24">
+                <p className="label-mono text-muted-foreground">Legal</p>
+                <h1 className="text-h2 mt-4">Privacy</h1>
+                <p className="mt-4 text-sm text-muted-foreground">Last updated 26 September 2026</p>
+
+                <p className="mt-8 text-[17px] leading-relaxed text-muted-foreground">
+                    AI Interviewer lets you practise technical interviews. This page explains what we collect to do that, who helps us process it, how long we keep it, and how to delete it.
+                </p>
+
+                <Section title="What we collect">
+                    <p><strong className="text-foreground">Your account:</strong> your name, your email address and a hash of your password (never the password itself).</p>
+                    <p><strong className="text-foreground">What you give us for an interview:</strong> the role and level you choose, and anything you optionally add: a job description, your resume (its text, extracted from the file you upload) and your public GitHub username.</p>
+                    <p><strong className="text-foreground">What happens during an interview:</strong> a transcript of the conversation, the code you write, run and submit with its test results, and the report we generate from them. Your voice is processed live to be turned into text; <strong className="text-foreground">we do not record or store audio</strong>.</p>
+                    <p><strong className="text-foreground">Technical data:</strong> a sign-in session (a cookie that keeps you signed in) and basic request logs such as time, route and IP address, kept briefly to run and secure the service.</p>
+                </Section>
+
+                <Section title="Who processes it">
+                    <p>We use a small number of providers to run the service, and they receive only what each step needs:</p>
+                    <ul className="grid gap-2 pl-5 [list-style:disc]">
+                        <li>A speech-to-text and text-to-speech provider (Deepgram) receives your microphone audio while an interview is running, and the interviewer's words to speak.</li>
+                        <li>A language-model provider (Groq) receives the conversation, your job description and resume text, and your code, to write the interviewer's replies and your report.</li>
+                        <li>GitHub's public API is read for the profile you name, to ask about your projects.</li>
+                        <li>A database provider stores your account, interviews and reports.</li>
+                    </ul>
+                    <p>We do not sell your data or use it for advertising.</p>
+                </Section>
+
+                <Section title="How long we keep it">
+                    <p>Interviews, transcripts, code and reports are kept until you delete them, and are removed automatically after a retention period set by the service operator (180 days by default). Sign-in sessions expire on their own.</p>
+                </Section>
+
+                <Section title="Your controls">
+                    <p>You can delete any interview from your dashboard or its report page, which permanently removes its transcript, code and report. You can delete your whole account from the account menu, which removes everything above. Deleting is immediate and can't be undone.</p>
+                </Section>
+
+                <Section title="Cookies and storage">
+                    <p>We use one cookie, an httpOnly sign-in cookie that your browser sends only to our sign-in endpoints. Your browser's local storage keeps your theme, your editor preferences and drafts of code you are writing; none of it is sent to us until you submit it.</p>
+                </Section>
+
+                <Section title="Security">
+                    <p>Passwords are hashed with Argon2. Sign-in sessions use short-lived tokens that are refreshed and can be revoked. Code you write runs in an isolated container with no network access. No system is perfectly secure, so please don't paste anything into an interview that you wouldn't want processed as described here.</p>
+                </Section>
+
+                <Section title="Practice feedback">
+                    <p>Reports are generated by AI from a single conversation. They are practice feedback, not an assessment for hiring, and shouldn't be shared with employers as if they were.</p>
+                </Section>
+
+                {CONTACT && (
+                    <Section title="Contact">
+                        <p>Questions about this policy: <a className="text-foreground underline underline-offset-4" href={`mailto:${CONTACT}`}>{CONTACT}</a>.</p>
+                    </Section>
+                )}
+            </div>
+        </MarketingLayout>
+    );
+}

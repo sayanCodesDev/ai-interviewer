@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
-import { Navigate, useLocation, useSearchParams } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 
 import { PageLoader } from "@/components/PageLoader";
 import { useAuth } from "@/context/AuthContext";
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
-    const { status, user, wasJustSignedOut, refresh } = useAuth();
+    const { status, wasJustSignedOut, refresh } = useAuth();
     const location = useLocation();
-    const [searchParams] = useSearchParams();
 
     // A session we already know about renders straight away and is re-checked in the
     // background; anything else waits for a fresh check so a stale "signed out" never redirects.
@@ -30,10 +29,6 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     if (status === "unauthenticated") {
         // Someone who just chose to sign out goes home; an expired or missing session goes to sign-in.
         return wasJustSignedOut() ? <Navigate to="/" replace /> : <Navigate to="/signin" replace state={{ from: location }} />;
-    }
-
-    if (user && !searchParams.get("userId")) {
-        return <Navigate to={`${location.pathname}?userId=${user.id}`} replace />;
     }
 
     return <>{children}</>;

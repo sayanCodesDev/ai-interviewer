@@ -13,9 +13,10 @@ import { EASE_OUT_EXPO } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
-    { href: "#how-it-works", label: "How it works" },
-    { href: "#features", label: "Features" },
-    { href: "#faq", label: "FAQ" },
+    { href: "/#how-it-works", label: "How it works" },
+    { href: "/#features", label: "Features" },
+    { href: "/mock-interviews", label: "Mock interviews" },
+    { href: "/#faq", label: "FAQ" },
 ];
 
 export function SiteNav() {

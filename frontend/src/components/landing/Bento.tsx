@@ -130,8 +130,8 @@ export function Bento() {
 
                     <TileShell
                         eyebrow="GitHub"
-                        title="Grounded in your work."
-                        text="Share your GitHub and the interviewer tailors its questions to the stack and projects you've actually built."
+                        title="Built from your job."
+                        text="Paste the job description and the questions follow it. Add your resume or GitHub and the interviewer asks about what you've actually built."
                         className="lg:col-span-5"
                     >
                         <GithubVisual />
@@ -140,7 +140,7 @@ export function Bento() {
                     <TileShell
                         eyebrow="Languages"
                         title="Five languages."
-                        text="Switch languages from the editor whenever you like."
+                        text="Switch languages from the editor whenever you like; each keeps its own draft."
                         className="lg:col-span-3"
                     >
                         <LanguagesVisual />
@@ -148,9 +148,9 @@ export function Bento() {
 
                     <TileShell
                         tone="signal"
-                        eyebrow="Feedback"
-                        title="Feedback, out loud."
-                        text="Before the session closes, the interviewer tells you what went well and what to sharpen."
+                        eyebrow="Report"
+                        title="A report you can act on."
+                        text="A score out of 100, feedback on every part, the full transcript and a study plan, each point tied to something you said."
                         className="md:col-span-2 lg:col-span-4"
                     >
                         <p className="font-serif text-2xl leading-snug tracking-tight italic">“Say your edge cases out loud before you start typing.”</p>

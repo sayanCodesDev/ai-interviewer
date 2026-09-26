@@ -1,7 +1,8 @@
 /*
  * Self-hosted fonts, Latin subset only (Latin-1 plus common punctuation, so accented names are fine).
  * The @fontsource packages ship every subset and a legacy WOFF copy; importing their stylesheets
- * would inline all of them into the bundle, several times the size.
+ * would bundle all of them, several times the size. build.ts emits these as files (not base64 inside
+ * the stylesheet, which blocks rendering) and prerender.ts preloads the two used above the fold.
  *
  * The variable fonts use format("woff2"), not "woff2-variations": the production minifier strips the
  * quotes, and browsers reject the unquoted form, which silently drops the whole @font-face rule.

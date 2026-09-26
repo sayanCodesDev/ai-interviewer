@@ -1,4 +1,5 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { Check } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
@@ -39,6 +40,28 @@ function DropdownMenuItem({ className, ...props }: React.ComponentProps<typeof D
   );
 }
 
+function DropdownMenuCheckboxItem({ className, children, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.CheckboxItem>) {
+  return (
+    <DropdownMenuPrimitive.CheckboxItem
+      data-slot="dropdown-menu-checkbox-item"
+      // Keep the menu open so several settings can be changed in a row.
+      onSelect={(event) => event.preventDefault()}
+      className={cn(
+        "relative flex cursor-default items-center gap-2 rounded-md py-2 pr-2.5 pl-8 text-sm outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent",
+        className,
+      )}
+      {...props}
+    >
+      <span className="absolute left-2.5 flex size-4 items-center justify-center">
+        <DropdownMenuPrimitive.ItemIndicator>
+          <Check className="size-3.5" />
+        </DropdownMenuPrimitive.ItemIndicator>
+      </span>
+      {children}
+    </DropdownMenuPrimitive.CheckboxItem>
+  );
+}
+
 function DropdownMenuLabel({ className, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Label>) {
   return <DropdownMenuPrimitive.Label data-slot="dropdown-menu-label" className={cn("px-2.5 py-2", className)} {...props} />;
 }
@@ -53,4 +76,4 @@ function DropdownMenuSeparator({ className, ...props }: React.ComponentProps<typ
   );
 }
 
-export { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger };
+export { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger };

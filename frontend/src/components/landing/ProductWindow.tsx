@@ -76,7 +76,7 @@ export function ProblemCard({ visible }: { visible: boolean }) {
             <div className="min-h-0 overflow-hidden">
                 <div className="rounded-xl border border-night-line bg-night-raised p-4">
                     <p className="label-mono text-night-muted">Problem 2</p>
-                    <h3 className="mt-2 font-serif text-xl tracking-tight">Two Sum</h3>
+                    <p className="mt-2 font-serif text-xl tracking-tight">Two Sum</p>
                     <p className="mt-2 text-[13px] leading-relaxed text-night-muted">
                         Given an array of integers and a target, return the indices of the two numbers that add up to the target.
                     </p>
