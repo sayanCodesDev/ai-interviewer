@@ -60,8 +60,12 @@ export class AudioPeer {
             streams: [new MediaStream({ id: "interviewer-voice", tracks: [this.track] })],
         });
 
+        let micPackets = 0;
         this.pc.ontrack = (event: any) => {
             event.track.onReceiveRtp.subscribe((rtp: any) => {
+                // The first packet proves the browser's microphone is really reaching us: "the interviewer never hears me" starts here.
+                if (micPackets++ === 0) logger.info("Microphone audio is arriving");
+                else if (micPackets % 3000 === 0) logger.debug({ micPackets }, "Microphone audio still arriving");
                 try {
                     this.handlers.onOpusPacket(Buffer.from(rtp.payload));
                 } catch (error) {

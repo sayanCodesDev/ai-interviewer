@@ -1,5 +1,5 @@
 import { prerender } from "react-dom/static";
-import { StaticRouter } from "react-router";
+import { StaticRouter } from "react-router-dom";
 
 import { AppContent, AppProviders } from "./App";
 
