@@ -149,6 +149,18 @@ If it fails, the step name says where. Then open the site, sign in, and start a 
 - **Backups:** use your database's (Neon: point-in-time restore). Transcripts and code are the valuable data; audio is never stored.
 - **Upgrades:** migrations are additive. For a change that isn't (dropping a column), ship it in two releases: stop using the column, then drop it.
 
+## Voice quality
+
+If the interviewer's voice glitches, work from the listener's end back to the source. Each step has a number you can read.
+
+1. **In the browser.** The room shows "Weak connection" when the browser is hiding gaps in the voice (5% packet loss, or 8% of the audio invented). That is the network or Wi-Fi between the browser and the API, not the speech service: try a wired connection, and check the UDP rules in [WebRTC and firewalls](#webrtc-and-firewalls). A Bluetooth headset with its microphone on drops to phone-call quality and sounds muffled and broken; use wired headphones or the computer's own speakers. The lobby plays a sample of the interviewer's voice and warns when it sees a Bluetooth microphone.
+2. **On the server.** Every browser reports how the voice arrives every five seconds, and `GET /metrics` shows it: `ai_interviewer_client_packet_loss_percent`, `ai_interviewer_client_concealed_audio_percent`, `ai_interviewer_weak_connection_windows_total`. A bad stretch also logs "The candidate's voice connection is weak" with the numbers.
+3. **The speech service.** `ai_interviewer_tts_first_audio_ms` is how long it took to start speaking, `ai_interviewer_speech_gap_ms` counts pauses caused by audio arriving late, and `ai_interviewer_speech_start_wait_ms` is the delay the smoothing buffer added. Many gaps mean the speech service is slow for you; raise `VOICE_PREROLL_MS` / `VOICE_MAX_LEAD_MS`.
+4. **This process.** `ai_interviewer_pacer_lateness_ms` shows how late the 20 ms audio clock ran. High values mean the server is busy (CPU, a long garbage-collection pause): the voice is timed by the event loop.
+5. **Prove where a glitch is made.** Start the server with `AUDIO_DEBUG_DUMP=/tmp/sent`; when a call ends it writes `/tmp/sent.wav`, exactly what was sent. If that file sounds clean, the problem is on the way to the browser; if it glitches, it is here.
+
+For testing how the voice copes with trouble, the server can inject faults in development (`AUDIO_TEST_TTS_RATE=0.6` for a slow speech service, `AUDIO_TEST_TTS_STALL_EVERY` / `AUDIO_TEST_TTS_STALL_MS` for stalls, `AUDIO_TEST_LOSS_PERCENT=5` for packet loss, `AUDIO_TEST_BLOCK_MS` for a busy event loop). They are refused in production.
+
 ## Things that trip people up
 
 | Symptom | Cause and fix |
@@ -159,6 +171,8 @@ If it fails, the step name says where. Then open the site, sign in, and start a 
 | "The AI interviewer has reached its usage limit" | The model provider's daily allowance is used up (a free Groq key). Wait, or use a paid key or another provider (`LLM_BASE_URL`). |
 | "Runner image is not built" or "Docker is not running" | Build the sandbox image, and make sure the API's user can run `docker`. |
 | Connects, interviewer speaks, never hears you | UDP is blocked. `WEBRTC_PUBLIC_IP`, the port range and the firewall rule must all agree. |
+| The interviewer's voice breaks up, stutters or sounds robotic | See [Voice quality](#voice-quality) below. |
+| The interviewer keeps cutting itself off or answers itself | Its own voice is reaching the microphone (speakers, no echo cancellation). Use headphones; keep `VOICE_ECHO_GUARD=true`. |
 | Interviewer never speaks and the call fails | `VOICE_MODE`, `DEEPGRAM_API_KEY`, or the model key. The API log says which. |
 | Reports stay "generating" | The model provider is out of allowance; they wait and finish when it returns. Check `/metrics` and the log line "Report deferred". |
 | Blank page after deploy on Netlify | `_redirects`/`_headers` weren't deployed (they're in `dist/`), or a CSP violation: open the browser console. The CSP allows only your own origin and `VITE_BACKEND_URL`. |
