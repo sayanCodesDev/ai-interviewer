@@ -39,6 +39,14 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
     }),
     z.object({ type: z.literal("SUBMIT_NOTES"), text: z.string().max(8_000) }),
     z.object({ type: z.literal("USER_TEXT"), text: z.string().trim().min(1).max(1_500) }),
+    /** How well the interviewer's voice is arriving, measured by the browser every few seconds. */
+    z.object({
+        type: z.literal("CLIENT_STATS"),
+        lossPercent: z.number().min(0).max(100),
+        concealedPercent: z.number().min(0).max(100),
+        jitterMs: z.number().min(0).max(60_000),
+        packets: z.number().int().min(0).max(1_000_000),
+    }),
     z.object({ type: z.literal("END_INTERVIEW") }),
     z.object({ type: z.literal("PING") }),
 ]);

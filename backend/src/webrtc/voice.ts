@@ -1,4 +1,7 @@
 import { logger } from "../observability/logger";
+import { ttsFirstAudioMs } from "../observability/metrics";
+import { audioFaults } from "../voice/faults";
+import { estimateSpeechMs, speechText } from "../voice/speechText";
 import { TurnTaker } from "../voice/turnTaker";
 import { connectStt, type SttConnection } from "../voice/stt";
 import { connectTts, type TtsConnection } from "../voice/tts";
@@ -37,6 +40,8 @@ export interface VoiceLike {
     send(event: object): boolean;
     close(reason?: string): void;
     readonly isClosed: boolean;
+    /** Dip the interviewer's voice while the candidate may be interrupting, or bring it back. Optional: only a real call has volume. */
+    duck?(active: boolean): void;
 }
 
 export type VoiceFactory = (
@@ -64,6 +69,11 @@ export class Voice implements VoiceLike {
     private dropAudio = false;
     private clearAck: (() => void) | null = null;
     private firstAudioListeners: Array<() => void> = [];
+    /** When the first sentence of the current reply went to the synthesiser, to time how long it took to answer. */
+    private spokeAt = 0;
+    private chunksSeen = 0;
+    /** Keeps audio in order when a test is delaying its delivery. */
+    private delivery: Promise<void> = Promise.resolve();
     private audioBytesQueued = 0;
     private speechEpochBytes = 0;
 
@@ -157,6 +167,22 @@ export class Voice implements VoiceLike {
         raw.binaryType = "nodebuffer";
         if (raw.socket) raw.socket.binaryType = "nodebuffer";
 
+        const deliver = (mono: Buffer) => {
+            if (this.dropAudio || this.closed) return;
+            if (this.spokeAt > 0) {
+                ttsFirstAudioMs.observe(Date.now() - this.spokeAt);
+                this.spokeAt = 0;
+            }
+            this.audioBytesQueued += mono.length;
+            this.speechEpochBytes += mono.length;
+            if (this.firstAudioListeners.length > 0) {
+                const listeners = this.firstAudioListeners;
+                this.firstAudioListeners = [];
+                for (const listener of listeners) listener();
+            }
+            this.peer.enqueueSpeech(mono);
+        };
+
         raw.addEventListener("message", async (event: any) => {
             let data = event.data;
             if (typeof Blob !== "undefined" && data instanceof Blob) data = Buffer.from(await data.arrayBuffer());
@@ -168,6 +194,10 @@ export class Voice implements VoiceLike {
                         this.dropAudio = false;
                         this.clearAck?.();
                         this.clearAck = null;
+                    } else if (parsed.type === "Flushed") {
+                        // Everything sent so far has been synthesised: nothing more is coming for this reply.
+                        if (audioFaults.ttsStallMs > 0 || audioFaults.ttsRate > 0) this.delivery = this.delivery.then(() => this.peer.expectMoreSpeech(false));
+                        else this.peer.expectMoreSpeech(false);
                     } else if (parsed.type === "Warning") {
                         logger.warn({ warning: parsed.description }, "Speech synthesis warning");
                     }
@@ -179,17 +209,24 @@ export class Voice implements VoiceLike {
             if (this.dropAudio || this.closed) return;
 
             const mono = Buffer.isBuffer(data) ? data : Buffer.from(data instanceof ArrayBuffer ? data : (data as Uint8Array).buffer);
-            this.audioBytesQueued += mono.length;
-            this.speechEpochBytes += mono.length;
-            if (this.firstAudioListeners.length > 0) {
-                const listeners = this.firstAudioListeners;
-                this.firstAudioListeners = [];
-                for (const listener of listeners) listener();
+            if ((audioFaults.ttsStallEvery > 0 && audioFaults.ttsStallMs > 0) || audioFaults.ttsRate > 0) {
+                // Test only: deliver audio late, in order, as a slow provider or network would.
+                const stall = audioFaults.ttsStallEvery > 0 && ++this.chunksSeen % audioFaults.ttsStallEvery === 0 ? audioFaults.ttsStallMs : 0;
+                const pace = audioFaults.ttsRate > 0 ? mono.length / 96 / audioFaults.ttsRate : 0; // wait this long per chunk
+                this.delivery = this.delivery.then(async () => {
+                    if (stall + pace > 0) await new Promise((resolve) => setTimeout(resolve, stall + pace));
+                    deliver(mono);
+                });
+                return;
             }
-            this.peer.enqueueSpeech(mono);
+            deliver(mono);
         });
 
-        connection.on("error", (error: unknown) => logger.warn({ err: error }, "Speech synthesis connection error"));
+        connection.on("error", (error: unknown) => {
+            logger.warn({ err: error }, "Speech synthesis connection error");
+            this.peer.expectMoreSpeech(false);
+        });
+        connection.on("close", () => this.peer.expectMoreSpeech(false));
     }
 
     /** Resolves when the first audio of the next speech arrives, for latency measurement. */
@@ -203,9 +240,15 @@ export class Voice implements VoiceLike {
         this.speechEpochBytes = 0;
     }
 
-    /** Sends one sentence to the synthesiser. */
+    /** Sends one sentence to the synthesiser, rewritten so code, symbols and shorthand are said the way a person would. */
     speak(sentence: string): void {
-        if (this.tts?.readyState === 1 && sentence.trim()) this.tts.sendText({ type: "Speak", text: sentence });
+        const text = speechText(sentence);
+        if (this.tts?.readyState === 1 && text) {
+            if (this.spokeAt === 0) this.spokeAt = Date.now();
+            this.peer.expectMoreSpeech(true);
+            this.peer.expectSpeechDuration(estimateSpeechMs(text));
+            this.tts.sendText({ type: "Speak", text });
+        }
     }
 
     /** Tells the synthesiser no more text is coming for this reply, so it finishes the last sentence. */
@@ -224,6 +267,10 @@ export class Voice implements VoiceLike {
             timeout.unref();
             this.clearAck = () => clearTimeout(timeout);
         }
+    }
+
+    duck(active: boolean): void {
+        this.peer.setDuck(active);
     }
 
     /** Milliseconds of speech still to be heard. */

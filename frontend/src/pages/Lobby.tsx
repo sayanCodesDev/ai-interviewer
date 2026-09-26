@@ -1,4 +1,4 @@
-import { ArrowRight, Headphones, Mic, Volume2 } from "lucide-react";
+import { ArrowRight, Headphones, Mic, TriangleAlert, Volume2 } from "lucide-react";
 import { useMotionValue } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -10,6 +10,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { monitorStreamVolume } from "@/hooks/useInterviewSession";
 import { AppLayout } from "@/layouts/AppLayout";
+import { apiFetch } from "@/lib/api";
 import { fetchInterview } from "@/lib/interviews";
 import type { InterviewMeta } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,13 @@ import { cn } from "@/lib/utils";
 type MicState = "idle" | "requesting" | "ok" | "blocked" | "missing";
 
 const LEVEL_LABEL: Record<string, string> = { intern: "intern", junior: "junior", mid: "mid-level", senior: "senior", staff: "staff-level" };
+
+/**
+ * Bluetooth headsets drop to a phone-call audio mode (narrow, muffled, prone to breaking up) the moment their
+ * microphone is switched on. It is the most common reason a clear voice sounds bad, and it is not something the
+ * site can fix, so say so before the interview starts.
+ */
+const BLUETOOTH_LIKE = /bluetooth|airpods|buds|hands-?free|hfp|headset|\bwh-\d|\bwf-\d|beats|jabra|bose|momentum|freebuds/i;
 
 /** A short tone through the speakers, so a candidate knows they'll hear the interviewer. */
 async function playTestTone() {
@@ -46,6 +54,7 @@ export function Lobby() {
     const [mic, setMic] = useState<MicState>("idle");
     const [heard, setHeard] = useState(false);
     const [toneing, setToneing] = useState(false);
+    const [micLabel, setMicLabel] = useState("");
     const stream = useRef<MediaStream | null>(null);
     const stopMeter = useRef<(() => void) | null>(null);
     const heardRef = useRef(false);
@@ -88,6 +97,7 @@ export function Lobby() {
         try {
             const media = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
             stream.current = media;
+            setMicLabel(media.getAudioTracks()[0]?.label ?? "");
             stopMeter.current = monitorStreamVolume(media, (volume) => {
                 level.set(volume / 100);
                 if (volume > 12 && !heardRef.current) {
@@ -102,10 +112,28 @@ export function Lobby() {
         }
     }
 
+    /** Plays a few seconds of the interviewer's actual voice; if that isn't available here, a plain tone. */
     async function testSpeakers() {
         setToneing(true);
         try {
-            await playTestTone();
+            const response = await apiFetch(`/api/interviews/${id}/voice-sample`).catch(() => null);
+            if (response?.ok) {
+                const url = URL.createObjectURL(await response.blob());
+                try {
+                    const sample = new Audio(url);
+                    await sample.play();
+                    await new Promise<void>((resolve) => {
+                        sample.onended = () => resolve();
+                        sample.onerror = () => resolve();
+                    });
+                } finally {
+                    URL.revokeObjectURL(url);
+                }
+            } else {
+                await playTestTone();
+            }
+        } catch {
+            await playTestTone().catch(() => undefined);
         } finally {
             setToneing(false);
         }
@@ -158,6 +186,15 @@ export function Lobby() {
                                     {heard ? "We can hear you. You're set." : "Say something. The bars should move."}
                                 </p>
                             )}
+                            {mic === "ok" && BLUETOOTH_LIKE.test(micLabel) && (
+                                <div role="note" className="mt-4 flex items-start gap-2.5 rounded-lg border border-[color-mix(in_oklab,var(--night-amber)_50%,transparent)] bg-[color-mix(in_oklab,var(--night-amber)_10%,transparent)] px-3.5 py-3 text-[13px] leading-relaxed">
+                                    <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--night-amber)]" aria-hidden />
+                                    <p>
+                                        You're using a Bluetooth headset ({micLabel}). While its microphone is on, most switch to a phone-call audio mode that sounds
+                                        muffled and can break up. For the clearest voice, use wired headphones, or your computer's own speakers and microphone.
+                                    </p>
+                                </div>
+                            )}
                             {(mic === "blocked" || mic === "missing") && (
                                 <div role="alert" className="mt-5 grid gap-3">
                                     <p className="text-sm text-destructive">
@@ -176,7 +213,7 @@ export function Lobby() {
                                     <Volume2 className="size-4 text-muted-foreground" /> Speakers
                                 </h2>
                                 <Button variant="outline" size="sm" className="mt-4" onClick={() => void testSpeakers()} disabled={toneing}>
-                                    {toneing ? <Spinner /> : <Volume2 />} Play a test sound
+                                    {toneing ? <Spinner /> : <Volume2 />} Hear your interviewer
                                 </Button>
                                 <p className="mt-3 flex items-start gap-2 text-[13px] text-muted-foreground">
                                     <Headphones className="mt-0.5 size-4 shrink-0" /> Headphones stop the interviewer's voice feeding back into your microphone.

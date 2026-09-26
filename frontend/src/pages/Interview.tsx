@@ -199,7 +199,7 @@ export function Interview() {
                 {STATUS_ANNOUNCEMENT[session.status]}
             </p>
 
-            <TopBar role={meta?.role} status={session.status} elapsedSeconds={elapsed} plannedMinutes={meta?.durationMinutes} round={round} onOpenTranscript={() => setTranscriptOpen(true)} />
+            <TopBar role={meta?.role} status={session.status} elapsedSeconds={elapsed} plannedMinutes={meta?.durationMinutes} round={round} onOpenTranscript={() => setTranscriptOpen(true)} connection={session.quality.level} />
 
             <main className="min-h-0 flex-1 p-3 sm:p-4">
                 <div
