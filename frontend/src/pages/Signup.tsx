@@ -1,4 +1,3 @@
-import axios from "axios";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -10,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/context/AuthContext";
 import { AuthLayout } from "@/layouts/AuthLayout";
-import { BACKEND_URL } from "@/lib/config";
+import { api, apiErrorMessage, apiFieldErrors } from "@/lib/api";
 import { usePageTitle } from "@/hooks/usePageTitle";
 
 interface FormErrors {
@@ -23,7 +22,7 @@ interface FormErrors {
 export function Signup() {
     usePageTitle("Create your account");
     const navigate = useNavigate();
-    const { refresh } = useAuth();
+    const { acceptSession } = useAuth();
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -38,24 +37,27 @@ export function Signup() {
         if (!email.trim()) nextErrors.email = "Enter your email address.";
         else if (!/^\S+@\S+\.\S+$/.test(email.trim())) nextErrors.email = "That doesn't look like an email address.";
         if (!password) nextErrors.password = "Choose a password.";
+        else if (password.length < 10) nextErrors.password = "Use at least 10 characters.";
         setErrors(nextErrors);
         if (nextErrors.name || nextErrors.email || nextErrors.password) return;
 
         setLoading(true);
         try {
-            const response = await axios.post(`${BACKEND_URL}/api/auth/signup`, {
+            const response = await api.post("/api/auth/signup", {
                 name: name.trim(),
                 email: email.trim(),
                 password,
             });
-            if (response.data.token) {
-                localStorage.setItem("token", response.data.token);
-            }
-            await refresh();
+            acceptSession(response.data);
             toast.success("Account created");
-            navigate(`/form?userId=${response.data.userId}`);
-        } catch (error: any) {
-            setErrors({ form: error.response?.data?.msg || "We couldn't create your account. Please try again." });
+            navigate(`/form?userId=${response.data.user.id}`);
+        } catch (error) {
+            const fields = apiFieldErrors(error);
+            if (fields.password || fields.email || fields.name) {
+                setErrors({ name: fields.name, email: fields.email, password: fields.password });
+            } else {
+                setErrors({ form: apiErrorMessage(error, "We couldn't create your account. Please try again.") });
+            }
         } finally {
             setLoading(false);
         }

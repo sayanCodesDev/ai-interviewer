@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatClock } from "@/hooks/useElapsed";
-import { BACKEND_URL } from "@/lib/config";
+import { apiFetch } from "@/lib/api";
 import { defineInterviewerTheme, MONACO_THEME } from "@/lib/monaco-theme";
 import { cn } from "@/lib/utils";
 
@@ -101,15 +101,9 @@ export function EditorPanel({ initialLanguage, question, problemNumber, canClose
         setIsRunning(true);
         setOutput("Running your code…");
         try {
-            // The execution endpoint is authenticated; send the same credentials axios does.
-            const token = localStorage.getItem("token");
-            const response = await fetch(`${BACKEND_URL}/api/execute-code`, {
+            const response = await apiFetch("/api/execute-code", {
                 method: "POST",
-                credentials: "include",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ code, language }),
             });
             const data = await response.json().catch(() => ({}));

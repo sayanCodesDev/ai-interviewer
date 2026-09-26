@@ -1,8 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -18,4 +16,157 @@ model User {
   password  String
   name      String?
   createdAt DateTime @default(now())
+
+  sessions   RefreshSession[]
+  interviews Interview[]
+}
+
+/// One row per refresh token. Rotated on every use; a token that is presented
+/// again after rotation revokes its whole family (theft detection).
+model RefreshSession {
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Every token descended from one sign-in shares a family.
+  familyId       String
+  /// SHA-256 of the token. The token itself is never stored.
+  tokenHash      String    @unique
+  familyStartedAt DateTime @default(now())
+  userAgent      String?
+  ip             String?
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime
+  /// Set when this token was exchanged for a newer one. A token that is presented again later
+  /// than a short grace window was stolen or replayed.
+  rotatedAt      DateTime?
+  /// Set when the token was revoked outright (sign-out, or its family was burned). Never reusable.
+  revokedAt      DateTime?
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+}
+
+enum InterviewStatus {
+  CREATED
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+enum PlanStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+enum ReportStatus {
+  NONE
+  PENDING
+  GENERATING
+  READY
+  FAILED
+}
+
+enum TurnRole {
+  INTERVIEWER
+  CANDIDATE
+  SYSTEM
+}
+
+enum SubmissionKind {
+  RUN
+  SUBMIT
+}
+
+model Interview {
+  id              String          @id @default(uuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status          InterviewStatus @default(CREATED)
+
+  targetRole      String
+  level           String
+  format          String
+  durationMinutes Int
+  jobDescription  String?
+  resumeText      String?
+  githubUsername  String?
+  voice           String          @default("aura-2-thalia-en")
+  accent          String          @default("en")
+
+  planStatus      PlanStatus      @default(PENDING)
+  /// Rounds, questions and selected problems. Hidden tests never live here.
+  plan            Json?
+  planError       String?
+
+  startedAt       DateTime?
+  endedAt         DateTime?
+  endReason       String?
+
+  reportStatus    ReportStatus    @default(NONE)
+  reportAttempts  Int             @default(0)
+  reportError     String?
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  turns           InterviewTurn[]
+  submissions     CodeSubmission[]
+  report          Report?
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([reportStatus, updatedAt])
+  @@index([status, updatedAt])
+}
+
+model InterviewTurn {
+  id          String    @id @default(uuid())
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  seq         Int
+  role        TurnRole
+  roundKey    String?
+  text        String
+  /// Milliseconds since the interview started.
+  offsetMs    Int
+  interrupted Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  @@unique([interviewId, seq])
+}
+
+model CodeSubmission {
+  id          String         @id @default(uuid())
+  interviewId String
+  interview   Interview      @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  problemKey  String
+  kind        SubmissionKind
+  /// Position of this submission among the SUBMITs for the problem (1 = first try).
+  attempt     Int            @default(1)
+  language    String
+  code        String
+  passed      Int            @default(0)
+  total       Int            @default(0)
+  /// PASSED | FAILED | COMPILE_ERROR | RUNTIME_ERROR | TIMEOUT | ERROR
+  status      String
+  /// Per-test outcomes, without hidden expected values.
+  results     Json?
+  runtimeMs   Int?
+  createdAt   DateTime       @default(now())
+
+  @@index([interviewId, createdAt])
+}
+
+model Report {
+  interviewId   String    @id
+  interview     Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  overallScore  Int
+  band          String
+  summary       String
+  /// The full structured report: dimensions, rounds, problems, strengths, plan.
+  data          Json
+  model         String
+  promptVersion String
+  createdAt     DateTime  @default(now())
 }

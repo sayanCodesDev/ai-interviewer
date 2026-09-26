@@ -1,5 +1,4 @@
 import "./index.css";
-import axios from "axios";
 import { domAnimation, LazyMotion, MotionConfig } from "motion/react";
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
@@ -19,16 +18,6 @@ import { Signup } from "@/pages/Signup";
 // so neither is downloaded until its route is visited.
 const Landing = lazy(() => import("@/pages/Landing").then((module) => ({ default: module.Landing })));
 const Interview = lazy(() => import("@/pages/Interview").then((module) => ({ default: module.Interview })));
-
-// Global Axios defaults & interceptor for cross-origin cookie / bearer token support
-axios.defaults.withCredentials = true;
-axios.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
 function ThemedToaster() {
   const { theme } = useTheme();
