@@ -37,15 +37,17 @@ const scenarios: Scenario[] = [
     { name: "slow for the first second, then fine", arrivals: monotone(chunks(N, (k) => (k < 25 ? 600 + k * 90 : 600 + 25 * 90 + (k - 25) * 12))), flushedAt: 600 + 25 * 90 + 225 * 12 + 30, totalAudioMs: N * CHUNK_MS },
 ];
 
+const fixed = (preRollMs: number, resumeMs: number): PlayoutConfig => ({ ...DEFAULT_PLAYOUT, preRollMs, resumeMs, maxLeadMs: 0 });
 const policies: Array<[string, PlayoutConfig]> = [
     ["no buffer (the old behaviour)", { preRollMs: 0, resumeMs: 0, maxWaitMs: 0, stallGiveUpMs: 6000, maxLeadMs: 0, rateWindowMs: 600 }],
-    ["fixed 350 / 220 (no adapting)", { ...DEFAULT_PLAYOUT, maxLeadMs: 350 }],
+    ["fixed 350 / 220 (no adapting)", fixed(350, 220)],
+    ["fixed 600 / 300", fixed(600, 300)],
+    ["fixed 800 / 400", fixed(800, 400)],
     ["adaptive (default)", DEFAULT_PLAYOUT],
+    ["adaptive 350 / 220 (earlier default)", { ...DEFAULT_PLAYOUT, preRollMs: 350, resumeMs: 220 }],
+    ["adaptive 250 / 180", { ...DEFAULT_PLAYOUT, preRollMs: 250, resumeMs: 180 }],
+    ["adaptive 550 / 350", { ...DEFAULT_PLAYOUT, preRollMs: 550, resumeMs: 350 }],
 ];
-const fixed = (preRollMs: number, resumeMs: number): PlayoutConfig => ({ ...DEFAULT_PLAYOUT, preRollMs, resumeMs, maxLeadMs: 0 });
-policies.push(["fixed 600 / 300", fixed(600, 300)], ["fixed 800 / 400", fixed(800, 400)], ["fixed 1000 / 500", fixed(1000, 500)]);
-policies.push(["fixed 200 / 150", fixed(200, 150)], ["fixed 250 / 200", fixed(250, 200)]);
-policies.push(["adaptive 250 / 180", { ...DEFAULT_PLAYOUT, preRollMs: 250, resumeMs: 180 }], ["adaptive 200 / 150", { ...DEFAULT_PLAYOUT, preRollMs: 200, resumeMs: 150 }], ["adaptive 150 / 120", { ...DEFAULT_PLAYOUT, preRollMs: 150, resumeMs: 120 }]);
 const only = process.argv[2];
 
 // With TRACES=<file of real recorded deliveries> the buffer is judged on what the speech service really did.

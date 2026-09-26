@@ -151,7 +151,7 @@ If it fails, the step name says where. Then open the site, sign in, and start a 
 
 ## Voice quality
 
-If the interviewer's voice glitches, start with the check that needs no browser: `cd backend && npx tsx scripts/voice-check.ts`. It sends a few interviewer-style replies to the speech service from the machine you run it on, records when each piece of audio arrives, checks that the machine keeps steady time, replays the recording through the same smoothing buffer the server uses, and prints a verdict with the `VOICE_PREROLL_MS` to set if the connection needs more. (On a typical broadband connection the service delivers audio in bursts, the first second slower than real time; without the buffer that is about 15 stops per reply, with it none.)
+If the interviewer's voice glitches, start with the check that needs no browser: `cd backend && npx tsx scripts/voice-check.ts`. It sends a few interviewer-style replies to the speech service from the machine you run it on, records when each piece of audio arrives, checks that the machine keeps steady time, replays the recording through the same smoothing buffer the server uses, and prints a verdict with the `VOICE_PREROLL_MS` to set if the connection needs more. (Measured over 42 recorded replies on a home connection: the service delivers audio in bursts, the first second slower than real time, so playing each piece the instant it arrives gave about 20 tiny dropouts per reply, while the default buffer left one reply in 42 with any stop at all, the one where the service itself was slower than real time. About one reply in twenty is like that; the check tells you if it is far more often for you.)
 
 Then work from the listener's end back to the source. Each step has a number you can read.
 
