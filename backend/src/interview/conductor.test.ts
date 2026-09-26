@@ -920,6 +920,51 @@ describe("Conductor: honesty about what the interviewer knows", () => {
     });
 });
 
+describe("Conductor: a reply that asks something does not also move on", () => {
+    async function atBackground() {
+        const rig = makeRig("quick");
+        await rig.speak(rig.conductor.begin());
+        await rig.speak(rig.conductor.onCandidate(SUBSTANTIAL));
+        await rig.speak(rig.conductor.onCandidate(SUBSTANTIAL));
+        assert.match(rig.conductor.position.round, /background/);
+        return rig;
+    }
+
+    test("a question with a stray closing marker keeps the topic open", async () => {
+        const rig = await atBackground();
+        const at = rig.conductor.position.item;
+        const turn = rig.conductor.onCandidate(SUBSTANTIAL)!;
+        const outcome = rig.conductor.finishTurn(turn, { text: "Got it. What TTL did you choose for that entry, and why?", markers: ["ADVANCE"], interrupted: false, firstSentenceMs: 1 });
+        assert.equal(outcome.transition, undefined, "no move: the candidate has a question to answer");
+        assert.equal(rig.conductor.position.item, at);
+    });
+
+    test("even at the follow-up limit the question asked is answered first, but only once", async () => {
+        const rig = await atBackground();
+        const at = rig.conductor.position.item;
+        // Use up the follow-ups (two allowed), with the model asking each time.
+        for (let i = 0; i < 2; i++) {
+            const t = rig.conductor.onCandidate(SUBSTANTIAL)!;
+            rig.conductor.finishTurn(t, { text: `And what about the part number ${i}?`, markers: [], interrupted: false, firstSentenceMs: 1 });
+        }
+        const last = rig.conductor.onCandidate(SUBSTANTIAL)!;
+        const asked = rig.conductor.finishTurn(last, { text: "Interesting. Why did you choose that?", markers: [], interrupted: false, firstSentenceMs: 1 });
+        assert.equal(asked.transition, undefined, "one more question is allowed to be answered");
+        assert.equal(rig.conductor.position.item, at);
+
+        const again = rig.conductor.onCandidate(SUBSTANTIAL)!;
+        const stopped = rig.conductor.finishTurn(again, { text: "And one more thing, how did you test it?", markers: [], interrupted: false, firstSentenceMs: 1 });
+        assert.equal(stopped.transition, true, "but not for ever");
+    });
+
+    test("a plain acknowledgement with the marker still moves on", async () => {
+        const rig = await atBackground();
+        const turn = rig.conductor.onCandidate(SUBSTANTIAL)!;
+        const outcome = rig.conductor.finishTurn(turn, { text: "Thanks, that covers it.", markers: ["ADVANCE"], interrupted: false, firstSentenceMs: 1 });
+        assert.equal(outcome.transition, true);
+    });
+});
+
 describe("summariseRun", () => {
     test("describes results in words and never includes expected values", () => {
         assert.equal(summariseRun(PASSING), "5 of 5 tests passed.");

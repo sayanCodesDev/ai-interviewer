@@ -71,8 +71,13 @@ export interface ConductorOptions {
     onProblemChosen?: (itemId: string, problemKey: string) => void;
 }
 
+/** Whether what was said ends by asking something. */
+export function endsInQuestion(text: string): boolean {
+    return /\?["')\]]?\s*$/.test(text.trim());
+}
+
 type Step =
-    | { t: "talk"; probes: number; brief?: number; words: number }
+    | { t: "talk"; probes: number; brief?: number; words: number; overrun?: number }
     | {
           t: "coding";
           phase: "present" | "working" | "followup";
@@ -84,6 +89,7 @@ type Step =
           probes: number;
           brief?: number;
           words: number;
+          overrun?: number;
       }
     | { t: "design"; probes: number; notes: string }
     | { t: "close" };
@@ -238,7 +244,7 @@ export class Conductor {
     get lastInterviewerAskedQuestion(): boolean {
         for (let i = this.history.length - 1; i >= 0; i--) {
             const utterance = this.history[i]!;
-            if (utterance.role === "interviewer") return /\?["')\]]?\s*$/.test(utterance.text.trim());
+            if (utterance.role === "interviewer") return endsInQuestion(utterance.text);
         }
         return true;
     }
@@ -536,16 +542,23 @@ export class Conductor {
                 return none;
 
             case "respond": {
+                // A reply that ends in a question is waiting for an answer: it cannot also be closing the topic, whatever else the
+                // model said. (Once, at the cap, so a model that never stops asking cannot hold a question open for ever.)
+                const holdOpen = () => {
+                    if (!endsInQuestion(reply.text) || (step.t !== "talk" && step.t !== "coding") || (step.overrun ?? 0) >= 1) return false;
+                    step.overrun = (step.overrun ?? 0) + 1;
+                    return true;
+                };
                 if (step.t === "talk") {
                     const done = markers.includes("ADVANCE") || step.probes >= (this.item as TalkItem).maxProbes || (step.brief ?? 0) >= MAX_BRIEF_IN_A_ROW;
-                    if (done) return this.defer(() => this.advance(true));
+                    if (done && !holdOpen()) return this.defer(() => this.advance(true));
                     if (this.lastCandidateWords >= BRIEF_ANSWER_WORDS) step.probes++;
                     return none;
                 }
                 if (step.t === "coding" && step.phase === "followup") {
                     const followUp = step.followUps[step.followUpIndex]!;
                     const done = markers.includes("ADVANCE") || step.probes >= followUp.maxProbes || (step.brief ?? 0) >= MAX_BRIEF_IN_A_ROW;
-                    if (!done) {
+                    if (!done || holdOpen()) {
                         if (this.lastCandidateWords >= BRIEF_ANSWER_WORDS) step.probes++;
                         return none;
                     }
@@ -631,6 +644,7 @@ export class Conductor {
         step.probes = 0;
         step.brief = 0;
         step.words = 0;
+        step.overrun = 0;
         const next = step.followUps[step.followUpIndex];
         if (!next) return this.advance(true);
         const def = this.problem();
