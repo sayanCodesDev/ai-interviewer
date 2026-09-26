@@ -63,6 +63,9 @@ export const notFoundHandler: RequestHandler = (_req, _res, next) => {
 };
 
 /** Last stop for every error. Only HttpError messages reach the client; everything else is a generic 500. */
+/** Prisma codes for "can't reach the database" (P1xxx) and "table/column does not exist" (P2021, P2022). */
+const DATABASE_UNAVAILABLE = /^P(1\d{3}|2021|2022)$/;
+
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction): void {
     if (res.headersSent) return;
 
@@ -83,6 +86,19 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
         return;
     }
 
-    logger.error({ err, requestId: (req as Request & { id?: string }).id, path: req.path }, "Unhandled request error");
-    res.status(500).json({ msg: config.isProduction ? "Something went wrong on our side." : String((err as Error)?.message ?? err), code: "internal_error" });
+    const requestId = (req as Request & { id?: string }).id;
+
+    // The database is unreachable, or is missing a table or column (migrations not applied). That is our problem to fix
+    // and the caller can only wait, so it is a 503, and nothing about the database reaches the response.
+    const dbCode = (err as { code?: unknown })?.code;
+    if (typeof dbCode === "string" && DATABASE_UNAVAILABLE.test(dbCode)) {
+        logger.error({ err, requestId, path: req.path }, "Database problem while handling a request. If this is 'table does not exist', run: npm run db:migrate:deploy");
+        res.setHeader("Retry-After", "30");
+        res.status(503).json({ msg: "We're having trouble reaching our systems. Please try again in a minute.", code: "service_unavailable", ref: requestId });
+        return;
+    }
+
+    // Details stay in the server log; a raw error message (a query, a file path) never goes to the browser, even in development.
+    logger.error({ err, requestId, path: req.path }, "Unhandled request error");
+    res.status(500).json({ msg: "Something went wrong on our side. Please try again.", code: "internal_error", ref: requestId });
 }

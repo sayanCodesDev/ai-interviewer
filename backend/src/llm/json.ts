@@ -34,9 +34,25 @@ export async function completeJson<T>(
     let conversation = messages;
     let lastReply = "";
     let lastProblem = "";
+    // Groq's JSON mode rejects a malformed generation with a 400 ("json_validate_failed") instead of returning it.
+    // When that happens the request is repeated without JSON mode; our own parser and the schema do the checking.
+    let jsonMode = true;
 
     for (let attempt = 0; attempt < 2; attempt++) {
-        lastReply = await llm.complete(conversation, { ...options, model, json: true });
+        // A reasoning model can spend its whole allowance thinking and return nothing. The correction round gets more room.
+        const maxTokens = attempt === 0 ? options.maxTokens : Math.ceil((options.maxTokens ?? 400) * 1.7);
+        try {
+            lastReply = await llm.complete(conversation, { ...options, maxTokens, model, json: jsonMode });
+        } catch (error) {
+            if (jsonMode && /json_validate_failed|Failed to generate JSON/i.test(String((error as Error)?.message ?? error))) {
+                // Switching off JSON mode is not a correction round, so it doesn't use up an attempt.
+                jsonMode = false;
+                lastProblem = "the provider rejected the previous generation as invalid JSON";
+                attempt--;
+                continue;
+            }
+            throw error;
+        }
         try {
             const parsed = schema.safeParse(extractJson(lastReply));
             if (parsed.success) return parsed.data;

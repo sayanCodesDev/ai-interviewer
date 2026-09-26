@@ -228,6 +228,7 @@ async function simulate(persona: Persona) {
     let injected = false;
     let turns = 0;
     let scriptedTalk = 0;
+    let tracedEvents = 0;
 
     while (!live.isFinalized && turns < 90) {
         await live.idle();
@@ -241,6 +242,11 @@ async function simulate(persona: Persona) {
         editorKey = shown.length > hidden ? shown[shown.length - 1].problem.key : null;
 
         turns++;
+        if (process.env.SIM_TRACE) {
+            console.log(`  (events: ${voice.events.slice(tracedEvents).map((e) => e.type + (e.mode ? `:${e.mode}` : "") + (e.round ? `#${e.round.index}` : "")).join(", ") || "none"})`);
+            tracedEvents = voice.events.length;
+            console.log(`  (directive: ${scriptedDialogue.calls.at(-1)?.messages.at(-1)?.content.replace(/\s+/g, " ").slice(-330)})`);
+        }
         // With the editor open: talk about the approach once, then submit; resubmit after a failure (twice at most).
         if (editorKey) {
             const results = voice.events.filter((e) => e.type === "SUBMISSION_RESULT" && e.problemKey === editorKey);
@@ -287,6 +293,7 @@ async function simulate(persona: Persona) {
     }
     console.log(`  interview ${done.status} (${done.endReason}) after ${turns} turns in ${Math.round((Date.now() - started) / 1000)}s`);
     if (done.reportStatus !== "PENDING") return { persona, score: null, done };
+    if (process.env.SIM_NO_REPORT) return { persona, score: null, done };
 
     const t0 = Date.now();
     const report = await generateReport(interview.id);
