@@ -1,8 +1,12 @@
 import type { Language } from "../../runner/types";
 import { LANGUAGES } from "../../runner/types";
+import { classicProblems } from "./data/classics";
 import { easyProblems } from "./data/easy";
+import { graphProblems } from "./data/graphs";
 import { hardProblems } from "./data/hard";
+import { harderProblems } from "./data/harder";
 import { mediumProblems } from "./data/medium";
+import { practicalProblems } from "./data/practical";
 import { starterCode } from "./harness";
 import { logger } from "../../observability/logger";
 import { blankRun, runTests, validateArgs, type CaseInput, type TestRun } from "./runTests";
@@ -12,7 +16,7 @@ export * from "./types";
 export { runTests, validateArgs } from "./runTests";
 export type { CaseResult, TestRun } from "./runTests";
 
-export const ALL_PROBLEMS: readonly ProblemDef[] = [...easyProblems, ...mediumProblems, ...hardProblems];
+export const ALL_PROBLEMS: readonly ProblemDef[] = [...easyProblems, ...mediumProblems, ...hardProblems, ...practicalProblems, ...graphProblems, ...classicProblems, ...harderProblems];
 
 const byKey = new Map(ALL_PROBLEMS.map((problem) => [problem.key, problem]));
 
