@@ -89,17 +89,34 @@ let probeCache: { at: number; ok: boolean; reason?: string } | null = null;
 export function probeDocker(force = false): Promise<{ ok: boolean; reason?: string }> {
     if (!force && probeCache && Date.now() - probeCache.at < 30_000) return Promise.resolve(probeCache);
 
-    return new Promise((resolve) => {
-        execFile("docker", ["image", "inspect", config.runnerImage, "--format", "{{.Id}}"], { timeout: 5_000 }, (error, _out, stderr) => {
-            let result: { ok: boolean; reason?: string };
-            if (!error) result = { ok: true };
-            else if (/No such image|no such object/i.test(stderr)) {
-                result = { ok: false, reason: `Runner image "${config.runnerImage}" is not built. Run: docker build -t ${config.runnerImage} backend/runner` };
-            } else {
-                result = { ok: false, reason: "Docker is not running or not installed." };
-            }
-            probeCache = { at: Date.now(), ...result };
-            resolve(result);
+    const inspect = () =>
+        new Promise<{ ok: boolean; reason?: string }>((resolve) => {
+            execFile("docker", ["image", "inspect", config.runnerImage, "--format", "{{.Id}}"], { timeout: 5_000 }, (error, _out, stderr) => {
+                if (!error) resolve({ ok: true });
+                else if (/No such image|no such object/i.test(stderr)) {
+                    resolve({ ok: false, reason: `Runner image "${config.runnerImage}" is not built. Run: docker build -t ${config.runnerImage} backend/runner` });
+                } else {
+                    resolve({ ok: false, reason: "Docker is not running or not installed." });
+                }
+            });
         });
-    });
+
+    // Docker Desktop sometimes answers "no such image" to `image inspect` for an image that exists and runs fine
+    // (`docker run` and `docker image ls` still see it). So a failure is checked against the image list before it
+    // is believed, and only then cached.
+    const listed = () =>
+        new Promise<boolean>((resolve) => {
+            execFile("docker", ["image", "ls", "--quiet", config.runnerImage], { timeout: 5_000 }, (error, out) => resolve(!error && out.trim().length > 0));
+        });
+
+    return (async () => {
+        let result = await inspect();
+        if (!result.ok && (await listed())) result = { ok: true };
+        if (!result.ok) {
+            await new Promise((resolve) => setTimeout(resolve, 750));
+            result = await inspect();
+        }
+        probeCache = { at: Date.now(), ...result };
+        return result;
+    })();
 }

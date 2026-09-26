@@ -247,12 +247,12 @@ describe("Conductor: coding problems", () => {
 
         const t2 = rig.conductor.onCandidate("Still stuck, one more hint please.")!;
         assert.match(t2.directive, new RegExp(def.hints[1].slice(0, 30).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-        assert.match(t2.directive, /Hints given so far: 1 of 3/);
+        assert.match(t2.directive, /hints given so far: 1 of 3/i);
         await rig.speak(t2, () => "Here you go. [[HINT]]");
         await rig.speak(rig.conductor.onCandidate("I need another hint.")!, () => "Try this. [[HINT]]");
 
         const t4 = rig.conductor.onCandidate("Any more hints?")!;
-        assert.match(t4.directive, /already given every hint/);
+        assert.match(t4.directive, /given every hint/i);
     });
 
     test("the candidate giving up gets an explanation, then the interview moves on", async () => {
@@ -361,6 +361,26 @@ describe("Conductor: context for the model", () => {
         rig.conductor.setRoundNotes("1-intro", "Sam is confident with Go and Postgres; mentioned leading a small team.");
         const turn = rig.conductor.onCandidate("Some words to make this a real answer about my background and goals.")!;
         assert.match(rig.conductor.buildMessages(turn)[0]!.content, /leading a small team/);
+    });
+});
+
+describe("Conductor: session facts in the transcript", () => {
+    test("round changes, hints and submissions are recorded as system entries, and never shown to the model as speech", async () => {
+        const rig = makeRig("quick");
+        await toFirstProblem(rig);
+        await rig.speak(rig.conductor.onCandidate("I'm stuck, can I have a hint please?"), () => "Sure, think about it this way. [[HINT]]");
+        await rig.speak(rig.conductor.onSubmission({ problemKey: problemKey(rig), language: "python", code: "x", run: PASSING }));
+
+        const system = rig.conductor.history.filter((u) => u.role === "system").map((u) => u.text);
+        assert.ok(system.some((t) => /^Part 1 of 4: Introduction/.test(t)));
+        assert.ok(system.some((t) => /^Part 3 of 4: Coding/.test(t)));
+        assert.ok(system.some((t) => /^Hint 1 of 3 given/.test(t)));
+        assert.ok(system.some((t) => /submitted python code .* 5 of 5 tests passed/.test(t)));
+
+        const turn = rig.conductor.onCandidate("It runs in linear time because of the single pass through the array.")!;
+        for (const message of rig.conductor.buildMessages(turn).slice(1, -1)) {
+            assert.ok(!/^Part \d of/.test(message.content) && !/^Hint \d/.test(message.content), message.content);
+        }
     });
 });
 

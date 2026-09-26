@@ -42,7 +42,7 @@ export class InterviewRecorder {
         this.queue.push({
             interviewId: this.interviewId,
             seq: this.seq++,
-            role: utterance.role === "interviewer" ? "INTERVIEWER" : "CANDIDATE",
+            role: utterance.role === "interviewer" ? "INTERVIEWER" : utterance.role === "system" ? "SYSTEM" : "CANDIDATE",
             roundKey: utterance.roundKey,
             text: utterance.text.slice(0, 8_000),
             offsetMs: Math.max(0, utterance.at - this.startedAt),

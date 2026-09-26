@@ -4,7 +4,8 @@ import { easyProblems } from "./data/easy";
 import { hardProblems } from "./data/hard";
 import { mediumProblems } from "./data/medium";
 import { starterCode } from "./harness";
-import { runTests, validateArgs, type CaseInput, type TestRun } from "./runTests";
+import { logger } from "../../observability/logger";
+import { blankRun, runTests, validateArgs, type CaseInput, type TestRun } from "./runTests";
 import { conformsTo, type Difficulty, type Problem, type ProblemDef, type PublicProblem } from "./types";
 
 export * from "./types";
@@ -124,7 +125,17 @@ export function runExamples(def: ProblemDef, language: Language, code: string): 
 
 /** "Submit": the visible examples plus every hidden case. Hidden cases are graded but never revealed. */
 export async function runAll(def: ProblemDef, language: Language, code: string): Promise<TestRun> {
-    const expected = await expectedOutputs(def);
+    let expected: unknown[];
+    try {
+        expected = await expectedOutputs(def);
+    } catch (error) {
+        // The hidden answers come from running the reference solution in the sandbox. If that can't run, the
+        // candidate is told to retry; it is never a reason to throw (the call would sit on "thinking" forever).
+        logger.error({ err: error, problem: def.key }, "Could not compute the expected outputs");
+        return blankRun("ERROR", def.examples.map((_, i) => ({ id: `e${i}`, args: [] })), {
+            message: "We couldn't grade that just now because the code sandbox is unavailable. Your code is still in the editor, so try submitting again in a moment.",
+        });
+    }
     const cases: CaseInput[] = [
         ...def.examples.map((example, i) => ({ id: `e${i}`, args: example.input, expected: example.output, label: `Example ${i + 1}` })),
         ...def.hidden.map((hidden, i) => ({ id: `h${i}`, args: hidden.input, expected: expected[i], label: hidden.label, hidden: true })),

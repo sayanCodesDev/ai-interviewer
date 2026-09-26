@@ -38,6 +38,13 @@ const schema = z.object({
     GROQ_API_KEY: optionalString,
     GROQ_MODEL: z.string().default("qwen/qwen3.8-27b"),
     GROQ_EVAL_MODEL: optionalString,
+    /** Models tried, in order, when the primary is rate-limited or failing. Each has its own token allowance. */
+    GROQ_FALLBACK_MODELS: optionalString,
+    /** Any OpenAI-compatible chat endpoint. Defaults to Groq. Set these to move to a paid provider without code changes. */
+    LLM_BASE_URL: optionalString,
+    LLM_API_KEY: optionalString,
+    /** Tokens per minute each model may use, when the provider doesn't report it. Free Groq keys allow 8000. */
+    LLM_TPM_LIMIT: optionalInt(8000),
     /** Optional. Raises GitHub's anonymous 60-requests-an-hour limit when reading candidates' public repositories. */
     GITHUB_TOKEN: optionalString,
 
@@ -59,6 +66,9 @@ const schema = z.object({
     STUN_URLS: optionalString,
 
     METRICS_TOKEN: optionalString,
+
+    /** "text" skips speech recognition and synthesis: the interview runs over the data channel and you type. For development and tests only. */
+    VOICE_MODE: z.enum(["live", "text"]).default("live"),
 });
 
 export interface AppConfig {
@@ -81,6 +91,10 @@ export interface AppConfig {
     groqApiKey?: string;
     groqModel: string;
     groqEvalModel: string;
+    llmFallbackModels: string[];
+    llmBaseUrl: string;
+    llmApiKey?: string;
+    llmTpmLimit: number;
     githubToken?: string;
 
     codeRunner: "auto" | "docker" | "local";
@@ -99,6 +113,7 @@ export interface AppConfig {
     stunUrls: string[];
 
     metricsToken?: string;
+    voiceMode: "live" | "text";
 }
 
 function parseTrustProxy(raw: string | undefined): boolean | number | string {
@@ -155,7 +170,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env, warn: (messa
     }
 
     if (isProduction) {
-        if (!raw.GROQ_API_KEY) problems.push("GROQ_API_KEY is required in production");
+        if (raw.VOICE_MODE === "text") problems.push("VOICE_MODE=text is for development and tests only");
+        if (!raw.GROQ_API_KEY && !raw.LLM_API_KEY) problems.push("GROQ_API_KEY (or LLM_API_KEY) is required in production");
         if (!raw.DEEPGRAM_API_KEY) problems.push("DEEPGRAM_API_KEY is required in production");
         if (raw.CODE_RUNNER === "local" && !raw.ALLOW_UNSAFE_LOCAL_EXEC) {
             problems.push("CODE_RUNNER=local runs candidate code on this machine. Use docker, or set ALLOW_UNSAFE_LOCAL_EXEC=true to accept the risk.");
@@ -192,6 +208,10 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env, warn: (messa
         groqApiKey: raw.GROQ_API_KEY,
         groqModel: raw.GROQ_MODEL,
         groqEvalModel: raw.GROQ_EVAL_MODEL ?? "openai/gpt-oss-120b",
+        llmFallbackModels: (raw.GROQ_FALLBACK_MODELS ?? "openai/gpt-oss-20b,openai/gpt-oss-120b").split(",").map((m) => m.trim()).filter(Boolean),
+        llmBaseUrl: (raw.LLM_BASE_URL ?? "https://api.groq.com/openai/v1").replace(/\/+$/, ""),
+        llmApiKey: raw.LLM_API_KEY ?? raw.GROQ_API_KEY,
+        llmTpmLimit: Math.max(1_000, raw.LLM_TPM_LIMIT),
         githubToken: raw.GITHUB_TOKEN,
 
         codeRunner: raw.CODE_RUNNER,
@@ -210,6 +230,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env, warn: (messa
         stunUrls: raw.STUN_URLS ? raw.STUN_URLS.split(",").map((url) => url.trim()).filter(Boolean) : [],
 
         metricsToken: raw.METRICS_TOKEN,
+        voiceMode: raw.VOICE_MODE,
     };
 }
 

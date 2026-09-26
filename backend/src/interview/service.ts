@@ -5,7 +5,7 @@ import { config } from "../config/env";
 import { HttpError } from "../http/errors";
 import { logger } from "../observability/logger";
 import { analyseCandidate } from "./jdAnalysis";
-import { fetchGithubProfile, parseGithubInput, summariseGithub } from "./github";
+import { fetchGithubProfile, parseGithubInput } from "./github";
 import { FORMATS, FORMAT_PRESETS, LEVELS, type Format, type InterviewPlan } from "./plan";
 import { buildPlan } from "./planBuilder";
 import { warmExpected, type Level } from "./problems";
@@ -109,7 +109,6 @@ export async function preparePlan(interviewId: string): Promise<void> {
             github,
         });
         const plan = buildPlan({ role: row.targetRole, level: row.level as Level, format: row.format as Format, analysis, seed: interviewId });
-        plan.githubSummary = summariseGithub(github) || undefined;
 
         warmExpected(plan.rounds.flatMap((r) => r.items).flatMap((i) => (i.kind === "coding" ? [i.problemKey] : [])));
 

@@ -71,8 +71,8 @@ export interface InterviewPlan {
     analysisSource: "llm" | "fallback";
     /** Technical vocabulary, fed to the speech recogniser so terms like "Kubernetes" transcribe correctly. */
     keyterms: string[];
-    /** A short summary of the candidate's public repositories, for the interviewer's context. */
-    githubSummary?: string;
+    /** The interviewer's brief on the role and the candidate; sent with each turn in place of the full documents. */
+    brief?: string;
 }
 
 export interface RoundSpec {

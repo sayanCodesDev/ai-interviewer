@@ -10,7 +10,6 @@ import { getProblemDef, publicView, redactHidden, runAll } from "../interview/pr
 import { personaPrompt } from "../interview/prompts";
 import { InterviewRecorder } from "../interview/recorder";
 import { VOICES, finishInterview, markStarted } from "../interview/service";
-import { sanitizeUntrusted } from "../interview/untrusted";
 import { isInterruption } from "../voice/turnTaker";
 import { removeLive } from "./registry";
 import { Voice, type VoiceFactory, type VoiceLike } from "./voice";
@@ -26,6 +25,10 @@ export function setVoiceFactoryForTesting(factory: VoiceFactory | null): void {
 const RECONNECT_WINDOW_MS = 90_000;
 const TICK_MS = 10_000;
 const CLOSING_AUDIO_GRACE_MS = 900;
+/** The data channel bypasses the HTTP rate limiters, so it has its own: a candidate can't spam the sandbox or the model. */
+const MAX_MESSAGES_PER_10S = 24;
+const MAX_SUBMISSIONS_PER_PROBLEM = 12;
+const MIN_SUBMISSION_GAP_MS = 3_000;
 
 export interface LiveInterviewInit {
     interview: {
@@ -86,6 +89,8 @@ export class LiveInterview {
     private candidateCaptionId = "c0";
     private lastInterimCaptionAt = 0;
     private readonly attempts = new Map<string, number>();
+    private messageTimes: number[] = [];
+    private lastSubmissionAt = 0;
     private silenceTimers: NodeJS.Timeout[] = [];
     private suspendTimer: NodeJS.Timeout | null = null;
     private readonly tickTimer: NodeJS.Timeout;
@@ -103,9 +108,7 @@ export class LiveInterview {
                 role: interview.targetRole,
                 level: interview.level as never,
                 candidateName: init.candidateName,
-                jobDescription: interview.jobDescription ? sanitizeUntrusted(interview.jobDescription, 6_000) : undefined,
-                resumeText: interview.resumeText ? sanitizeUntrusted(interview.resumeText, 6_000) : undefined,
-                githubSummary: plan.githubSummary,
+                brief: plan.brief,
             }),
             onUtterance: (utterance) => this.recorder.addTurn(utterance),
             onRoundComplete: (round, transcript) => void this.summariseRound(round.key, round.title, transcript),
@@ -214,7 +217,21 @@ export class LiveInterview {
         });
     }
 
+    /** Sliding-window limit on everything the browser sends over the data channel. */
+    private allowMessage(): boolean {
+        const now = Date.now();
+        this.messageTimes = this.messageTimes.filter((t) => now - t < 10_000);
+        if (this.messageTimes.length >= MAX_MESSAGES_PER_10S) return false;
+        this.messageTimes.push(now);
+        return true;
+    }
+
     private onClientMessage(raw: string): void {
+        if (raw.length > 200_000) return;
+        if (!this.allowMessage()) {
+            this.sendNotice("warning", "You're sending messages too quickly. Slow down a little.");
+            return;
+        }
         let message;
         try {
             message = clientMessageSchema.parse(JSON.parse(raw));
@@ -254,8 +271,27 @@ export class LiveInterview {
             return;
         }
 
+        const now = Date.now();
+        if ((this.attempts.get(problemKey) ?? 0) >= MAX_SUBMISSIONS_PER_PROBLEM) {
+            this.sendNotice("warning", "You've reached the submission limit for this problem.");
+            return;
+        }
+        if (now - this.lastSubmissionAt < MIN_SUBMISSION_GAP_MS) {
+            this.sendNotice("info", "Give the last submission a moment to finish before sending another.");
+            return;
+        }
+        this.lastSubmissionAt = now;
+
         this.send({ type: "STATE", state: "thinking" });
-        const run = await runAll(def, language as never, code);
+        let run;
+        try {
+            run = await runAll(def, language as never, code);
+        } catch (error) {
+            logger.error({ err: error, interviewId: this.id, problemKey }, "Grading a submission failed");
+            this.sendNotice("warning", "We couldn't run your tests just now. Try submitting again.");
+            this.send({ type: "STATE", state: "listening" });
+            return;
+        }
         const attempt = (this.attempts.get(problemKey) ?? 0) + 1;
 
         if (run.status === "ERROR") {
@@ -320,6 +356,10 @@ export class LiveInterview {
         try {
             result = await streamReply(getLlm(), this.conductor.buildMessages(turn), {
                 model: models.dialogue,
+                fallbackModels: models.fallbacks,
+                // Fail over to another model at once, but if every model is throttled a pause of a few seconds
+                // (the room shows "thinking") is kinder than a "technical hiccup" and asking the candidate to repeat.
+                maxWaitMs: 10_000,
                 maxTokens: turn.maxTokens,
                 temperature: 0.6,
                 reasoning: "none",
@@ -412,7 +452,8 @@ export class LiveInterview {
             const notes = await getLlm().complete([
                 { role: "system", content: "You take concise interviewer's notes. In at most 60 words, plainly note what the candidate said and how well they did in this part of a technical interview: concrete strengths, gaps and anything to follow up. Do not invent anything. Plain text only." },
                 { role: "user", content: `Part: ${title}\n\n${text}` },
-            ], { model: models.dialogue, maxTokens: 160, temperature: 0.2, reasoning: "none" });
+            // Notes are background work: use a fallback model's allowance so the live conversation keeps its own.
+            ], { model: models.fallbacks[0] ?? models.dialogue, fallbackModels: [models.dialogue, ...models.fallbacks.slice(1)], maxWaitMs: 30_000, maxTokens: 160, temperature: 0.2, reasoning: "low" });
             this.conductor.setRoundNotes(roundKey, notes.trim());
         } catch (error) {
             llmErrors.inc({ stage: "notes" });

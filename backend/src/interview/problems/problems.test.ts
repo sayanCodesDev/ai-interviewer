@@ -85,6 +85,14 @@ describe("running problems the way an interview does", () => {
         assert.ok(safe.cases.some((c) => c.hidden && c.label));
     });
 
+    test("a broken reference solution gives the candidate an ERROR result instead of throwing", async () => {
+        const broken = { ...two, key: "two-sum-broken-reference", reference: "def two_sum(:\n    pass\n" };
+        const run = await runAll(broken, "javascript", solve);
+        assert.equal(run.status, "ERROR");
+        assert.match(run.message ?? "", /try submitting again/i);
+        assert.doesNotMatch(run.message ?? "", /reference/i);
+    });
+
     test("expected outputs are computed once and cached", async () => {
         const first = await expectedOutputs(two);
         const second = await expectedOutputs(two);

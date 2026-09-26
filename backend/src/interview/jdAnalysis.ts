@@ -30,6 +30,8 @@ export interface Analysis {
     background: BackgroundQuestion[];
     behavioral: BehavioralQuestion[];
     design: DesignPrompt | null;
+    /** A few lines for the interviewer: the role's focus and what the candidate's own material shows. */
+    brief: string;
     source: "llm" | "fallback";
 }
 
@@ -41,6 +43,7 @@ const list = (max: number, itemMax: number) => z.array(text(itemMax)).transform(
 
 const replySchema = z.object({
     title: text(120).optional(),
+    brief: text(900).optional(),
     skills: z.array(z.object({ name: text(60), weight: z.coerce.number().min(1).max(5).catch(3) })).transform((s) => s.filter((x) => x.name).slice(0, 12)),
     keyterms: list(60, 40),
     codingTags: list(8, 40),
@@ -61,6 +64,7 @@ const replySchema = z.object({
 
 const SHAPE = `{
   "title": "job title, if stated",
+  "brief": "4 to 6 short plain lines for the interviewer: what the role really needs, what the candidate's resume and repositories show (name real projects), and what to probe. No more than 120 words",
   "skills": [{"name": "skill", "weight": 1-5}],
   "keyterms": ["technical terms a speech recogniser might mishear: tools, frameworks, acronyms"],
   "codingTags": ["algorithm topics that matter for this role, chosen ONLY from: ${KNOWN_TAGS.join(", ")}"],
@@ -136,8 +140,10 @@ function githubBackground(github: GithubProfile | null | undefined): BackgroundQ
 /** Role-and-level questions from the hand-written bank. Used when there is nothing to analyse, or the model fails. */
 export function fallbackAnalysis(input: AnalysisInput): Analysis {
     const bank = getRoleBank(input.role);
+    const jd = input.jobDescription?.trim();
     return {
         source: "fallback",
+        brief: [`Role focus: ${bank.focusAreas.join("; ")}.`, jd ? `Job description (start): ${sanitizeUntrusted(jd, 500)}` : "", input.github?.repos.length ? `Recent repositories: ${input.github.repos.slice(0, 4).map((r) => r.name).join(", ")}.` : ""].filter(Boolean).join("\n"),
         jd: {
             skills: bank.focusAreas.map((name) => ({ name, weight: 3 })),
             keyterms: bank.keyterms,
@@ -192,6 +198,7 @@ function fromReply(reply: z.infer<typeof replySchema>, input: AnalysisInput): An
 
     return {
         source: "llm",
+        brief: reply.brief || fallback.brief,
         jd: {
             title: reply.title,
             skills: reply.skills.length > 0 ? reply.skills : fallback.jd.skills,
@@ -223,9 +230,11 @@ export function analyseCandidate(input: AnalysisInput): Promise<Analysis> {
         try {
             const reply = await completeJson(buildMessages(input), replySchema, {
                 model: models.evaluation,
+                fallbackModels: models.fallbacks,
+                maxWaitMs: 45_000,
                 reasoning: "low",
                 temperature: 0.4,
-                maxTokens: 3_500,
+                maxTokens: 2_600,
             });
             return fromReply(reply, input);
         } catch (error) {
