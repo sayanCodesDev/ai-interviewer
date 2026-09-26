@@ -3,8 +3,9 @@ import OpusScript from "opusscript";
 import { MediaStream, MediaStreamTrack, RTCPeerConnection, RtpHeader, RtpPacket } from "werift";
 import { config } from "../config/env";
 import { logger } from "../observability/logger";
-import { pacerLatenessMs, speechGapMs, speechStartWaitMs } from "../observability/metrics";
+import { audioClockLateWindows, pacerLatenessMs, speechGapMs, speechStartWaitMs } from "../observability/metrics";
 import { audioFaults } from "../voice/faults";
+import { LatenessMonitor } from "../voice/latenessMonitor";
 import { applyGain, gainFromDb } from "../voice/loudness";
 import { PcmFrameQueue, SAMPLES_PER_FRAME, nextPacingStep } from "../services/audioQueue";
 import { DEFAULT_PLAYOUT, SpeechPlayout } from "./playout";
@@ -73,6 +74,7 @@ export class AudioPeer {
     private timestamp = 0;
     private readonly silence = Buffer.alloc(SAMPLES_PER_FRAME * 2 * TARGET_CHANNELS);
     private nextFrameDueAt = Date.now();
+    private readonly lateness = new LatenessMonitor();
     private readonly gain = gainFromDb(config.voiceGainDb);
     /** 1 normally, lower while the interviewer is "ducked" for a possible interruption; eased toward its target each frame. */
     private duckTarget = 1;
@@ -226,7 +228,15 @@ export class AudioPeer {
         this.pacer = setInterval(() => {
             const now = Date.now();
             const step = nextPacingStep(now, this.nextFrameDueAt, FRAME_INTERVAL_MS, MAX_CATCHUP_FRAMES);
-            if (step.frames > 0) pacerLatenessMs.observe(Math.max(0, now - this.nextFrameDueAt));
+            if (step.frames > 0) {
+                const late = Math.max(0, now - this.nextFrameDueAt);
+                pacerLatenessMs.observe(late);
+                const warning = this.lateness.note(late, now);
+                if (warning) {
+                    audioClockLateWindows.inc();
+                    logger.warn(warning, "The server's audio clock is running late, so the interviewer's voice will break up. Something is keeping this process from running on time: a busy computer, a laptop saving power, or a slow operation blocking the event loop.");
+                }
+            }
             this.nextFrameDueAt = step.nextDueAt;
             for (let i = 0; i < step.frames; i++) this.sendFrame();
         }, 5);
