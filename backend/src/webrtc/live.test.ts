@@ -358,6 +358,18 @@ describe("LiveInterview: the interview follows what has been heard", () => {
         assert.match(directive, /cut off before you finished asking this question/, "the interviewer knows the question may not have been heard");
     });
 
+    test("ending the interview while the interviewer is still talking does not wait for its audio to finish", async () => {
+        const { voice, finished } = await afterFirstAnswer();
+        voice.hold = true; // the interviewer is mid-sentence and would be for a long time
+        voice.handlers.onCandidateTurn(ANSWER);
+        await until(() => voice.spoken.filter((s) => s === "Okay.").length === 2);
+        const started = Date.now();
+        voice.handlers.onClientMessage(JSON.stringify({ type: "END_INTERVIEW" }));
+        await until(() => finished.length === 1, 8_000);
+        assert.ok(Date.now() - started < 4_000, "finished promptly");
+        assert.equal(finished[0]!.reason, "candidate_ended");
+    });
+
     test("the editor opens only once the problem has been introduced", async () => {
         const ctx = await setup("quick", { transitionBeatMs: 60 });
         const voice = await ctx.connect();

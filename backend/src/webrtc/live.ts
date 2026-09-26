@@ -746,7 +746,8 @@ export class LiveInterview {
             await voice.drained(12_000);
             await new Promise((resolve) => setTimeout(resolve, CLOSING_AUDIO_GRACE_MS));
         } else {
-            this.abort?.abort();
+            // Ending early: stop talking now, or the turn being spoken would hold the interview open until its audio had played out.
+            this.abortReply();
         }
 
         try {
