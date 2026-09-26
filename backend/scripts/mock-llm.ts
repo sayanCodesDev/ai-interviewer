@@ -23,6 +23,8 @@ function interviewer(messages: Message[]): string {
     if (/\[\[HINT\]\]/.test(directive) && /stuck or ask for a hint/.test(directive) && /hint/i.test(messages[messages.length - 2]?.content ?? "")) {
         return "Think about what you could store as you scan the input so you never need a second pass. [[HINT]]";
     }
+    // The step says the candidate has said too little to close the question: keep talking about it.
+    if (/do NOT move on/.test(directive) || /Do not advance yet/.test(directive)) return "Interesting. Could you say a bit more about that?";
     if (/\[\[ADVANCE\]\]/.test(directive) && !/EITHER/.test(directive)) return "Thanks, that covers it. [[ADVANCE]]";
     if (/complexity/i.test(directive)) return "Thanks. What is the time and space complexity of your solution, and why?";
     if (/submitted|test results|passed|failed/i.test(directive)) return "Thanks for submitting that. Let's see how it did.";
@@ -51,6 +53,14 @@ function segmentReply(system: string, user: string): object {
     const best = [...lines].sort((a, b) => b.text.length - a.text.length)[0];
     const evidence = best ? [{ turn: best.n, quote: quote(best.text) }] : [];
     const hasProblem = /"problem": \{/.test(system);
+    // A line-by-line review of the submitted code, from the numbered lines the model is shown: one note of praise and one suggestion.
+    const code = [...(user.match(/<untrusted label="final submitted code[^>]*>\n([\s\S]*?)\n<\/untrusted>/)?.[1] ?? "").matchAll(/^(\d+): (.*)$/gm)].map((m) => ({ n: Number(m[1]), text: m[2]! }));
+    const opening = code.find((l) => l.text.trim().length > 0);
+    const returning = [...code].reverse().find((l) => /\breturn\b/.test(l.text));
+    const review = code.length === 0 ? [] : [
+        ...(opening ? [{ line: opening.n, severity: "praise", comment: "A clear entry point with a descriptive name." }] : []),
+        ...(returning && returning !== opening ? [{ line: returning.n, endLine: Math.min(code.length, returning.n + 1), severity: "suggestion", comment: "State the complexity of this step out loud when you return the result." }] : []),
+    ];
     return {
         score,
         summary: average > 20 ? "You gave clear, specific answers with concrete detail." : "Your answers were brief and stayed at a high level.",
@@ -58,7 +68,7 @@ function segmentReply(system: string, user: string): object {
         signals: dims.map((key) => ({ dimension: key, score: Math.max(0, Math.min(10, score + (key.length % 3) * 0.5)), note: "Based on how this part went.", evidence })),
         strengths: average > 20 ? [{ title: "Concrete, specific answers", detail: "You backed your points with real examples and trade-offs.", evidence }] : [],
         gaps: average > 20 ? [] : [{ title: "Answers stayed high level", detail: "Add a specific example, the decision you made and why.", priority: 1, evidence }],
-        ...(hasProblem ? { problem: { complexity: { stated: "See the discussion", verdict: average > 20 ? "correct" : "partially" }, codeQuality: "Readable and direct.", feedback: "Explain your approach before coding and state the complexity unprompted." } } : {}),
+        ...(hasProblem ? { problem: { complexity: { stated: "See the discussion", verdict: average > 20 ? "correct" : "partially" }, codeQuality: "Readable and direct.", feedback: "Explain your approach before coding and state the complexity unprompted.", review } } : {}),
     };
 }
 

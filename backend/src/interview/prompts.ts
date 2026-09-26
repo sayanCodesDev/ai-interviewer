@@ -91,7 +91,7 @@ export const directives = {
             "No marker.",
         ),
 
-    respond: (view: TalkView, candidateIsBrief: boolean, moveOn = false, mayMoveOn = true, gap: "none" | "first" | "again" = "none") => {
+    respond: (view: TalkView, candidateIsBrief: boolean, moveOn = false, mayMoveOn = true, gap: "none" | "first" | "again" = "none", cutOff = false) => {
         const canProbe = view.probesUsed < view.maxProbes && !moveOn;
         return lines(
             `CURRENT STEP: ${view.roundTitle}, question ${view.number} of ${view.total} (${view.topic}). You asked: "${view.prompt}"`,
@@ -100,6 +100,7 @@ export const directives = {
             `Follow-ups used: ${view.probesUsed} of ${view.maxProbes}. The candidate just spoke.`,
             "- If they asked you to repeat or clarify, do so briefly and wait. Do not advance.",
             "- Otherwise react in one specific sentence, correcting anything clearly wrong.",
+            cutOff && "- You were cut off before you finished asking this question, so they may not have heard it in full. If what they said answers it, carry on as usual. If it sounds like more about their previous answer, acknowledge it in a few words and then ask this question again in your own words. Do not advance yet.",
             gap === "first" && "- They said they don't know this, or haven't done it. That is a fair thing to say, so do not lecture and do not press. Reassure them in a few words, then EITHER ask how they would go about working it out, OR ask one simpler related question they can answer. Do not advance yet.",
             gap === "again" && "- They still don't know it, and that is fine. Thank them warmly in one short sentence, without explaining the answer, and end your reply with [[ADVANCE]].",
             candidateIsBrief && !moveOn && gap === "none" && "- Their answer was very short: invite more detail or an example. Do not advance yet.",
@@ -154,6 +155,15 @@ export const directives = {
             `Constraints: ${view.constraints.join("; ")}`,
             `INTERNAL, never reveal unless they are stuck and asking: the intended approach is ${view.approach}`,
             view.time,
+        ),
+
+    /** They spoke after a submission that settled the problem (it passed, or they ran out of attempts): a word about what they said, no more coding. */
+    afterSolve: (view: { title: string; passed: boolean; time: string }) =>
+        lines(
+            `CURRENT STEP: ${view.passed ? `They have solved "${view.title}": every test passed.` : `They could not finish "${view.title}", and you have explained the intended approach.`} They just said something. Reply in one or two sentences to what they said, warmly and specifically.`,
+            "Do not invite more coding, do not give hints, and do not ask a new question: the next question comes right after your reply.",
+            view.time,
+            "No marker.",
         ),
 
     review: (view: {

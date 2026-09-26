@@ -51,8 +51,6 @@ export interface Outcome {
     /** Events to send now. */
     events: ServerEvent[];
     ended?: EndReason;
-    /** The candidate talked over a new question before hearing it, so the interview went back to the previous one. */
-    rolledBack?: boolean;
     /**
      * The interviewer is ready to move on (next question, next problem, next part). Nothing has moved yet: the caller
      * gives the candidate a moment to add something, then calls commitTransition(), or cancelTransition() if they spoke.
@@ -90,13 +88,7 @@ type Step =
     | { t: "design"; probes: number; notes: string }
     | { t: "close" };
 
-/** Where the interview was before a move, so a move the candidate talked over can be undone. */
-interface Snapshot {
-    roundIdx: number;
-    itemIdx: number;
-    step: Step;
-    roundStartedAt: number;
-}
+
 
 // Small on purpose: notes carry the earlier parts, and every token is charged against a per-minute allowance.
 const MAX_HISTORY_MESSAGES = 12;
@@ -142,8 +134,10 @@ export class Conductor {
     private ended: EndReason | null = null;
     /** A move the interviewer has announced but not yet made. Made by commitTransition(), dropped if the candidate speaks first. */
     private pendingMove: (() => Outcome) | null = null;
-    /** Set when a move is made: where things stood before it, until the first thing said after it has been heard. */
-    private lastMove: Snapshot | null = null;
+    /** True from a move being made until the first thing said after it has finished. */
+    private justMoved = false;
+    /** The candidate spoke before the new question had been asked in full: the interviewer's next reply must allow for that. */
+    private questionCutOff = false;
     /** How each coding problem went, once that was known: what the next problem is chosen from. */
     private readonly problemResults = new Map<string, ProblemOutcome>();
     private lastProblemResult: { key: string; outcome: ProblemOutcome } | null = null;
@@ -262,26 +256,8 @@ export class Conductor {
         const move = this.pendingMove;
         this.pendingMove = null;
         if (!move || this.ended || this.closing) return { next: null, events: [] };
-        this.lastMove = this.snapshot();
+        this.justMoved = true;
         return move();
-    }
-
-    private snapshot(): Snapshot {
-        return { roundIdx: this.roundIdx, itemIdx: this.itemIdx, step: structuredClone(this.step), roundStartedAt: this.roundStartedAt };
-    }
-
-    /** Puts the interview back where it was before the last move, and says what to show again. */
-    private rollBack(snapshot: Snapshot): ServerEvent[] {
-        const roundChanged = snapshot.roundIdx !== this.roundIdx;
-        this.roundIdx = snapshot.roundIdx;
-        this.itemIdx = snapshot.itemIdx;
-        this.step = snapshot.step;
-        this.roundStartedAt = snapshot.roundStartedAt;
-        const events: ServerEvent[] = [];
-        if (roundChanged) events.push(this.roundEvent());
-        const editor = this.editorEvent();
-        if (editor) events.push(editor);
-        return events;
     }
 
     /** The browser reports what is in the editor. Only the problem that is open counts, and only the latest is kept. */
@@ -400,6 +376,10 @@ export class Conductor {
                     return this.respondTurn(this.followUpView(step.followUps[step.followUpIndex]!, step), step);
                 }
                 const def = this.problem();
+                // The submission settled it (passed, or out of attempts): what they say now is about that, not more coding.
+                if (step.pendingOutcome === "passed" || step.pendingOutcome === "exhausted") {
+                    return this.turn("coach", directives.afterSolve({ title: def.title, passed: step.pendingOutcome === "passed", time: this.time }), [], []);
+                }
                 return this.turn("coach", directives.coach({
                     title: def.title,
                     statement: def.statement,
@@ -519,13 +499,15 @@ export class Conductor {
         const none: Outcome = { next: null, events: [] };
         this.record("interviewer", reply.text, reply.interrupted);
 
-        // The move that led to this turn, if it was the first thing said after it. If the candidate talked over the new
-        // question before hearing it, they were still on the previous one: put it back and let them carry on.
-        const move = this.lastMove;
-        this.lastMove = null;
-        if (move && reply.interrupted && !reply.delivered && (turn.kind === "ask" || turn.kind === "followup_ask")) {
-            this.recordSystem("The candidate spoke before the next question was fully asked, so the interview stayed on the previous question.");
-            return { next: null, events: this.rollBack(move), rolledBack: true };
+        // A candidate who starts talking before the new question is fully out may be answering it early (people do, once they
+        // see where it is going) or adding to their last answer. Either way the interview has moved on; the interviewer's next
+        // reply is told the question was cut off, and carries on or asks it again as a person would.
+        const justMoved = this.justMoved;
+        this.justMoved = false;
+        if (justMoved && reply.interrupted && !reply.delivered && (turn.kind === "ask" || turn.kind === "followup_ask")) {
+            this.questionCutOff = true;
+            this.recordSystem("The candidate spoke before the new question was fully asked.");
+            return none;
         }
 
         // The closing is always the last thing said, whether or not the model remembered its marker, and it ends the
@@ -535,7 +517,9 @@ export class Conductor {
             this.ended = "completed";
             return { next: null, events: [], ended: "completed" };
         }
-        if (reply.interrupted) return none;
+        // A settled submission decides what comes next (the follow-up questions, or the next problem), whatever happened to the reply
+        // about it: cut off by the candidate, or lost to a model that was busy. Nothing is left waiting on words that never finished.
+        if (reply.interrupted) return this.settledMove() ?? none;
 
         const markers = reply.markers.filter((m) => turn.allowedMarkers.includes(m));
         const step = this.step;
@@ -588,23 +572,30 @@ export class Conductor {
                     this.recordProblemResult(step, false, true);
                     return { next: this.turn("explain", directives.explain({ title: def.title, approach: def.solution.approach, time: this.time }), [], [], 260), events: [] };
                 }
-                return none;
+                return this.settledMove() ?? none;
             }
 
-            case "review": {
-                if (step.t !== "coding") return none;
-                if (step.pendingOutcome === "retry") return none;
-                if (step.pendingOutcome === "passed" && this.plan.codingFollowUps > 0) return this.defer(() => this.beginFollowUps(step));
-                return this.defer(() => this.advance(false));
-            }
+            case "review":
+                return this.settledMove() ?? none;
 
             case "explain":
             case "force_advance":
                 return this.defer(() => this.advance(false));
 
             default:
-                return none;
+                return this.settledMove() ?? none;
         }
+    }
+
+    /**
+     * The move a submission has already decided on, if it has: after a passing solution the follow-up questions, after the last
+     * failed attempt the next problem. Null while they may still resubmit, and once the follow-ups are under way.
+     */
+    private settledMove(): Outcome | null {
+        const step = this.step;
+        if (step.t !== "coding" || step.phase === "followup" || !step.pendingOutcome || step.pendingOutcome === "retry") return null;
+        if (step.pendingOutcome === "passed" && this.plan.codingFollowUps > 0) return this.defer(() => this.beginFollowUps(step));
+        return this.defer(() => this.advance(false));
     }
 
     // ---------------------------------------------------------------------------------- movement
@@ -786,12 +777,14 @@ export class Conductor {
     /** The reply to something the candidate said about a question. May end the question only once they have said enough. */
     private respondTurn(view: TalkView, step: Extract<Step, { words: number }>): Turn {
         const [brief, moveOn] = this.briefness(step);
+        const cutOff = this.questionCutOff;
+        this.questionCutOff = false;
         // "I've never used it": met with a kind, useful follow-up once, and then let go, rather than pressed or ignored.
         const gap = ADMITS_GAP.test(this.lastCandidateText) && this.lastCandidateWords < 40 ? (step.probes >= 1 || (step.brief ?? 0) >= 2 ? "again" : "first") : "none";
         const canProbe = view.probesUsed < view.maxProbes && !moveOn && gap !== "again";
         // Closing a question on the strength of a sentence or two is how an interview feels like a form being filled in.
-        const mayMoveOn = moveOn || gap === "again" || (gap !== "first" && (!canProbe || step.words >= MIN_WORDS_BEFORE_MOVING_ON || step.probes >= 1));
-        return this.turn("respond", directives.respond(view, brief, moveOn, mayMoveOn, gap), [], mayMoveOn ? ["ADVANCE"] : []);
+        const mayMoveOn = !cutOff && (moveOn || gap === "again" || (gap !== "first" && (!canProbe || step.words >= MIN_WORDS_BEFORE_MOVING_ON || step.probes >= 1)));
+        return this.turn("respond", directives.respond(view, brief, moveOn, mayMoveOn, gap, cutOff), [], mayMoveOn ? ["ADVANCE"] : []);
     }
 
     /**

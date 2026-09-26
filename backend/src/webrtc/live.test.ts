@@ -2,7 +2,7 @@ import "../testing/setup";
 import assert from "node:assert/strict";
 import { after, afterEach, before, beforeEach, describe, test } from "node:test";
 import { prisma } from "../../lib/prisma";
-import { setLlmForTesting, type ChatMessage } from "../llm/client";
+import { RateLimitedError, setLlmForTesting, type ChatMessage } from "../llm/client";
 import { fallbackAnalysis } from "../interview/jdAnalysis";
 import { buildPlan } from "../interview/planBuilder";
 import { JS_SOLUTIONS } from "../interview/problems/verify/jsSolutions";
@@ -63,7 +63,7 @@ function brain(overrides: (directive: string) => string | null = () => null) {
         if (/Coding problem \d of \d:/.test(directive)) return "Here is your first problem. The editor is open, so talk me through your approach.";
         if (/Ask in your own words/.test(directive)) return "So here is the next question about your project.";
         if (/AUTHORITATIVE TEST RESULTS/.test(directive)) return "That passed all the tests, nicely done.";
-        if (/Follow-up on the problem/.test(directive)) return "What is the time complexity of your solution?";
+        if (/CURRENT STEP: Follow-up on/.test(directive)) return "What is the time complexity of your solution?";
         if (/Close the interview/.test(directive)) return "Thanks Sam, that was a pleasure. [[END]]";
         if (/CURRENT STEP: The call dropped/.test(directive)) return "Welcome back, let's continue.";
         if (/Follow-up turns used so far: \d of \d/.test(directive) || /Exchanges so far/.test(directive)) {
@@ -85,7 +85,7 @@ beforeEach(async () => {
 });
 afterEach(() => setLlmForTesting(null));
 
-async function setup(format: "quick" | "standard" = "quick", options: { llm?: FakeLlm; reconnectWindowMs?: number; transitionBeatMs?: number } = {}) {
+async function setup(format: "quick" | "standard" = "quick", options: { llm?: FakeLlm; reconnectWindowMs?: number; transitionBeatMs?: number; rateLimitWaitMs?: number } = {}) {
     const role = "Backend Engineer";
     const level = "mid" as const;
     const created = await prisma.interview.create({
@@ -109,6 +109,7 @@ async function setup(format: "quick" | "standard" = "quick", options: { llm?: Fa
         voiceFactory: factory,
         reconnectWindowMs: options.reconnectWindowMs,
         transitionBeatMs: options.transitionBeatMs ?? 120,
+        rateLimitWaitMs: options.rateLimitWaitMs ?? 20,
         onFinished: (id, info) => finished.push({ id, ...info }),
     });
     const connect = async () => {
@@ -335,8 +336,14 @@ describe("LiveInterview: the interview follows what has been heard", () => {
         assert.ok(moved < 0 || moved > history.indexOf(spoken[cutOff + 1]!), "the interview moved on only after their words were answered");
     });
 
-    test("a new question talked over before it was heard is taken back: they are still on the last one", async () => {
-        const { voice, live } = await afterFirstAnswer();
+    test("a new question talked over before it was fully asked is not lost: the interviewer is told and picks it up again", async () => {
+        const llm = new FakeLlm(brain());
+        const { voice, live } = await (async () => {
+            const ctx = await setup("quick", { transitionBeatMs: 400, llm });
+            const v = await ctx.connect();
+            await ctx.say(v, ANSWER);
+            return { ...ctx, voice: v };
+        })();
         voice.holdAfter = /next question/; // the new question starts and is still playing
         voice.handlers.onCandidateTurn(ANSWER);
         await until(() => voice.spoken.some((s) => /next question/.test(s)));
@@ -344,9 +351,11 @@ describe("LiveInterview: the interview follows what has been heard", () => {
 
         voice.handlers.onCandidateTurn("sorry, I was still thinking about the last one, can I add a detail");
         await live.idle();
-        assert.deepEqual(rounds(voice).slice(0, 3), ["intro", "background", "intro"], "the screen went back to the part they were in, and their words were answered there");
+        assert.equal(rounds(voice).filter((r) => r === "intro").length, 1, "the screen does not go back to the introduction");
         const history = (live as any).conductor.history as Array<{ role: string; text: string }>;
-        assert.ok(history.some((u) => u.role === "system" && /stayed on the previous question/.test(u.text)));
+        assert.ok(history.some((u) => u.role === "system" && /spoke before the new question was fully asked/.test(u.text)));
+        const directive = llm.calls[llm.calls.length - 1]!.messages.at(-1)!.content;
+        assert.match(directive, /cut off before you finished asking this question/, "the interviewer knows the question may not have been heard");
     });
 
     test("the editor opens only once the problem has been introduced", async () => {
@@ -371,6 +380,61 @@ async function ctx_say(voice: FakeVoice, live: LiveInterview, text: string) {
     voice.handlers.onCandidateTurn(text);
     await live.idle();
 }
+
+describe("LiveInterview: a busy model", () => {
+    test("says one moment and asks again, instead of apologising and losing the turn", async () => {
+        const llm = new FakeLlm(brain());
+        const ctx = await setup("quick", { llm });
+        const voice = await ctx.connect();
+        // The next two calls are turned away, the third is answered.
+        llm.enqueue(() => { throw new RateLimitedError(0); }, () => { throw new RateLimitedError(0); }, "Right, that makes sense.");
+        await ctx.say(voice, ANSWER);
+        const spoken = voice.spoken.join(" | ");
+        assert.match(spoken, /One moment\.|Give me a second|just a moment/i);
+        assert.match(spoken, /Right, that makes sense\./);
+        assert.doesNotMatch(spoken, /overloaded/, "no apology");
+        assert.equal(voice.spoken.filter((s) => /One moment\.|Give me a second|just a moment/i.test(s)).length, 1, "said once, not on every try");
+        const history = (ctx.live as any).conductor.history as Array<{ role: string; text: string }>;
+        assert.ok(!history.some((u) => /One moment/.test(u.text)), "the filler is not part of the interview record");
+    });
+
+    test("after three refusals it apologises, and does not claim the candidate must repeat what they never said", async () => {
+        const llm = new FakeLlm(brain());
+        const ctx = await setup("quick", { llm });
+        const voice = await ctx.connect();
+        llm.enqueue(() => { throw new RateLimitedError(0); }, () => { throw new RateLimitedError(0); }, () => { throw new RateLimitedError(0); });
+        await ctx.say(voice, ANSWER);
+        assert.ok(voice.spoken.some((s) => /overloaded/.test(s)));
+        assert.ok(voice.spoken.some((s) => /say that again/.test(s)), "an answer to the candidate: they may need to repeat it");
+    });
+
+    test("a daily allowance that is used up is not waited for", async () => {
+        const llm = new FakeLlm(brain());
+        const ctx = await setup("quick", { llm });
+        const voice = await ctx.connect();
+        llm.enqueue(() => { throw new RateLimitedError(3_600_000); });
+        const before = Date.now();
+        await ctx.say(voice, ANSWER);
+        assert.ok(voice.spoken.some((s) => /overloaded/.test(s)));
+        assert.ok(!voice.spoken.some((s) => /One moment/.test(s)));
+        assert.ok(Date.now() - before < 2_000);
+    });
+
+    test("a review the model was too busy to write does not strand a solved problem", async () => {
+        const llm = new FakeLlm(brain());
+        const ctx = await setup("quick", { llm, rateLimitWaitMs: 5 });
+        const voice = await ctx.connect();
+        for (let i = 0; i < 8 && voice.of("SHOW_CODE_EDITOR").length === 0; i++) await ctx.say(voice, ANSWER);
+        const key = voice.of("SHOW_CODE_EDITOR")[0].problem.key as string;
+        // Every attempt at the review is turned away.
+        llm.enqueue(...Array.from({ length: 4 }, () => () => { throw new RateLimitedError(0); }));
+        voice.handlers.onClientMessage(JSON.stringify({ type: "SUBMIT_CODE", problemKey: key, language: "javascript", code: JS_SOLUTIONS[key]! }));
+        await until(() => voice.of("SUBMISSION_RESULT").length === 1, 20_000);
+        await ctx.live.idle();
+        assert.ok(voice.spoken.some((s) => /overloaded/.test(s)), "the review could not be written");
+        assert.ok(voice.spoken.some((s) => /time complexity/i.test(s)), "but the interview went on to the follow-up questions");
+    });
+});
 
 describe("LiveInterview: coding", () => {
     async function toCoding() {
