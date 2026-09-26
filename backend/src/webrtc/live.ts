@@ -43,6 +43,13 @@ const START_EVENTS_FALLBACK_MS = 6_000;
 const MAX_PLAYBACK_WAIT_MS = 60_000;
 /** How much of a reply must have been played for the candidate to have heard it. */
 const HEARD_FRACTION = 0.75;
+/** When the model has no room, the interviewer says so and tries again this many times before giving up on the turn. */
+const RATE_LIMIT_RETRIES = 2;
+const RATE_LIMIT_WAIT_MS = 6_000;
+/** Said once when the model is busy: enough to sound like thinking, not like a fault. */
+const BUSY_FILLERS = ["One moment.", "Give me a second to think about that.", "Sorry, just a moment."];
+/** Kinds of turn that answer something the candidate just said. The rest the interviewer starts itself. */
+const REPLIES_TO_CANDIDATE: ReadonlySet<string> = new Set(["respond", "coach", "design_respond"]);
 /** The data channel bypasses the HTTP rate limiters, so it has its own: a candidate can't spam the sandbox or the model. */
 const MAX_MESSAGES_PER_10S = 24;
 const MAX_SUBMISSIONS_PER_PROBLEM = 12;
@@ -68,6 +75,8 @@ export interface LiveInterviewInit {
     reconnectWindowMs?: number;
     /** The pause the candidate gets after "let's move on" before the next question. Shortened in tests. */
     transitionBeatMs?: number;
+    /** How long to wait before asking a busy model again. Shortened in tests. */
+    rateLimitWaitMs?: number;
     /** Called after the interview is closed and saved, so the caller can start scoring. */
     onFinished?: (interviewId: string, info: { substantive: boolean; reason: EndReason }) => void;
 }
@@ -408,6 +417,12 @@ export class LiveInterview {
         this.voice?.duck?.(false);
     }
 
+    /** Waits, but stops waiting as soon as the candidate cuts in. */
+    private async wait(run: Run, ms: number): Promise<void> {
+        const until = Date.now() + ms;
+        while (Date.now() < until && !run.interrupted && !this.finalized) await new Promise((resolve) => setTimeout(resolve, Math.min(50, Math.max(1, until - Date.now()))));
+    }
+
     /** Stops the interviewer mid-sentence: what is still being written, and what is still being played. */
     private abortReply(): void {
         this.undip();
@@ -500,39 +515,61 @@ export class LiveInterview {
         voice.onFirstAudio(() => firstAudioMs.observe(Date.now() - startedAt));
 
         let result: ReplyResult;
-        try {
-            result = await streamReply(getLlm(), this.conductor.buildMessages(turn), {
-                model: models.dialogue,
-                fallbackModels: models.fallbacks,
-                // Fail over to another model at once, but if every model is throttled a pause of a few seconds
-                // (the room shows "thinking") is kinder than a "technical hiccup" and asking the candidate to repeat.
-                maxWaitMs: 10_000,
-                maxTokens: turn.maxTokens,
-                temperature: 0.6,
-                reasoning: "none",
-                signal: controller.signal,
-                onSentence: (sentence) => {
-                    if (sentences.length === 0) this.send({ type: "STATE", state: "speaking" });
-                    sentences.push(sentence);
-                    this.echo.noteSpoken(sentence);
-                    voice.speak(sentence);
-                    this.send({ type: "CAPTION", id: captionId, role: "interviewer", text: sentences.join(" "), final: false });
-                },
-            });
-            if (result.firstSentenceMs !== null) firstSentenceMs.observe(result.firstSentenceMs);
-            run.generated = !result.interrupted;
-        } catch (error) {
-            llmErrors.inc({ stage: "dialogue" });
-            logger.error({ err: error, interviewId: this.id, kind: turn.kind }, "The interviewer's model call failed");
-            const apology = error instanceof RateLimitedError
-                ? "Sorry, I'm a bit overloaded right now. Give me a moment, then say that again."
-                : "Sorry, I had a technical hiccup. Could you say that again?";
-            sentences.push(apology);
-            this.echo.noteSpoken(apology);
-            voice.speak(apology);
-            this.send({ type: "CAPTION", id: captionId, role: "interviewer", text: apology, final: false });
-            // A failed reply must not move the interview on, so report it as cut off.
-            result = { text: apology, markers: [], interrupted: true, firstSentenceMs: null };
+        for (let attempt = 0; ; attempt++) {
+            try {
+                result = await streamReply(getLlm(), this.conductor.buildMessages(turn), {
+                    model: models.dialogue,
+                    fallbackModels: models.fallbacks,
+                    // Fail over to another model at once, but if every model is throttled a pause of a few seconds
+                    // (the room shows "thinking") is kinder than a "technical hiccup" and asking the candidate to repeat.
+                    maxWaitMs: 10_000,
+                    maxTokens: turn.maxTokens,
+                    temperature: 0.6,
+                    reasoning: "none",
+                    signal: controller.signal,
+                    onSentence: (sentence) => {
+                        if (sentences.length === 0) this.send({ type: "STATE", state: "speaking" });
+                        sentences.push(sentence);
+                        this.echo.noteSpoken(sentence);
+                        voice.speak(sentence);
+                        this.send({ type: "CAPTION", id: captionId, role: "interviewer", text: sentences.join(" "), final: false });
+                    },
+                });
+                if (result.firstSentenceMs !== null) firstSentenceMs.observe(result.firstSentenceMs);
+                run.generated = !result.interrupted;
+                break;
+            } catch (error) {
+                llmErrors.inc({ stage: "dialogue" });
+                // A model with no room is not a broken interviewer: say "one moment" like a person would and ask again, rather than
+                // apologising and dropping the turn (which, on a free key, used to derail a whole stretch of the interview).
+                // (A daily allowance that is used up will not come back in a few seconds, so that is not worth waiting for.)
+                const busy = error instanceof RateLimitedError && error.retryAfterMs < 60_000 && attempt < RATE_LIMIT_RETRIES && sentences.length === 0 && !run.interrupted && !this.finalized;
+                if (busy) {
+                    logger.warn({ interviewId: this.id, kind: turn.kind, attempt: attempt + 1 }, "The interviewer's model is busy; trying again");
+                    if (attempt === 0) {
+                        const filler = BUSY_FILLERS[this.captionSeq % BUSY_FILLERS.length]!;
+                        this.echo.noteSpoken(filler);
+                        voice.speak(filler);
+                        this.send({ type: "CAPTION", id: captionId, role: "interviewer", text: filler, final: false });
+                    }
+                    await this.wait(run, Math.max(this.init.rateLimitWaitMs ?? RATE_LIMIT_WAIT_MS, Math.min((error as RateLimitedError).retryAfterMs, 15_000)));
+                    if (!run.interrupted) continue;
+                    result = { text: "", markers: [], interrupted: true, firstSentenceMs: null };
+                    break;
+                }
+                logger.error({ err: error, interviewId: this.id, kind: turn.kind }, "The interviewer's model call failed");
+                const proactive = !REPLIES_TO_CANDIDATE.has(turn.kind);
+                const apology = error instanceof RateLimitedError
+                    ? proactive ? "Sorry, I'm a bit overloaded right now. Give me a moment." : "Sorry, I'm a bit overloaded right now. Give me a moment, then say that again."
+                    : proactive ? "Sorry, I had a technical hiccup. Give me a moment." : "Sorry, I had a technical hiccup. Could you say that again?";
+                sentences.push(apology);
+                this.echo.noteSpoken(apology);
+                voice.speak(apology);
+                this.send({ type: "CAPTION", id: captionId, role: "interviewer", text: apology, final: false });
+                // A failed reply must not move the interview on, so report it as cut off.
+                result = { text: apology, markers: [], interrupted: true, firstSentenceMs: null };
+                break;
+            }
         }
 
         voice.endSpeech();
@@ -555,9 +592,8 @@ export class LiveInterview {
 
         this.send({ type: "CAPTION", id: captionId, role: "interviewer", text: result.text || sentences.join(" "), final: true });
         const outcome = this.conductor.finishTurn(turn, result);
-        // If the candidate talked over a new question before hearing it, the interview went back to the previous one and the
-        // new part must not be shown. Otherwise whatever was waiting for this turn to be said is shown now.
-        if (!outcome.rolledBack && !this.finalized) {
+        // Whatever was waiting for this turn to be said is shown now.
+        if (!this.finalized) {
             if (!startEventsSent) for (const event of turn.events) this.send(event);
             for (const event of turn.eventsAfter) this.send(event);
         }
