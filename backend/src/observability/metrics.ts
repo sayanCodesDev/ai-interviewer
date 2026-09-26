@@ -40,6 +40,9 @@ export const speechGapMs = new client.Histogram({ name: "ai_interviewer_speech_g
 /** How late the 20 ms audio clock ticks ran. A busy server shows up here first. */
 export const pacerLatenessMs = new client.Histogram({ name: "ai_interviewer_pacer_lateness_ms", help: "Lateness of the audio pacer's ticks", buckets: [1, 2, 5, 10, 20, 40, 80, 160], registers: [registry] });
 
+/** Ten-second windows in which the audio clock ran late often enough to break up the voice: the server itself is the cause. */
+export const audioClockLateWindows = new client.Counter({ name: "ai_interviewer_audio_clock_late_windows_total", help: "Measurement windows in which the server's audio clock ran late", registers: [registry] });
+
 /** From sending a sentence to the synthesiser to its first audio coming back. */
 export const ttsFirstAudioMs = new client.Histogram({ name: "ai_interviewer_tts_first_audio_ms", help: "Speech synthesis time to first audio", buckets: latencyBuckets, registers: [registry] });
 
