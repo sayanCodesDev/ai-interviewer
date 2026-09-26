@@ -8,8 +8,8 @@ import { setLlmForTesting } from "../llm/client";
 import { FakeLlm } from "../testing/fakeLlm";
 import { resetDatabase } from "../testing/db";
 import { estimateTokens } from "../llm/router";
-import { evaluateInterview, verifyEvidence, type EvaluationInput } from "./evaluate";
-import { computeMetrics, type SubmissionRow, type TurnRow } from "./metrics";
+import { cleanReview, evaluateInterview, numberLines, verifyEvidence, type EvaluationInput } from "./evaluate";
+import { computeMetrics, failingTests, type SubmissionRow, type TurnRow } from "./metrics";
 import { DIMENSIONS, applicableDimensions, bandFor, overallScore, resourcesFor } from "./rubric";
 import { RateLimitedError } from "../llm/client";
 import { claimNextReport, processReport } from "./worker";
@@ -319,6 +319,87 @@ describe("evaluation pipeline", () => {
         const { report } = await evaluate();
         assert.match(report.disclaimer, /not a hiring decision/);
         assert.match(report.generatedBy.promptVersion, /mapreduce/);
+    });
+});
+
+describe("the line-by-line code review", () => {
+    const CODE = "def two_sum(nums, target):\n    seen = {}\n    for i, n in enumerate(nums):\n        if target - n in seen:\n            return [seen[target - n], i]\n        seen[n] = i\n    return []\n";
+
+    test("the model sees the code with its line numbers, and the tests it failed", async () => {
+        const failed = { label: "empty input", status: "fail", hidden: true };
+        const { llm } = await evaluate({}, transcript(), [submission({ code: CODE, passed: 9, total: 10, status: "FAILED", results: [{ label: "Example 1", status: "pass" }, failed, { label: "large input", status: "timeout" }] })]);
+        const call = llm.calls.find((c) => /Coding problem/.test(c.messages[1]!.content) || /final submitted code/.test(c.messages[1]!.content))!;
+        const prompt = call.messages[1]!.content;
+        assert.match(prompt, /^1: def two_sum\(nums, target\):$/m);
+        assert.match(prompt, /^3:     for i, n in enumerate\(nums\):$/m);
+        assert.match(prompt, /failed: empty input \(wrong answer\); large input \(too slow\)/);
+        assert.match(call.messages[0]!.content, /line-by-line review/);
+        assert.doesNotMatch(prompt, /"expected"|"actual"/, "the failing tests are named, never shown");
+    });
+
+    test("notes are attached to real lines only, ordered by position, capped and de-duplicated", () => {
+        const notes = cleanReview([
+            { line: 6, severity: "praise", comment: "Storing the index as you go avoids a second pass." },
+            { line: 0, severity: "issue", comment: "There is no line zero." },
+            { line: 99, severity: "issue", comment: "This file is shorter than that." },
+            { line: 3, endLine: 2, severity: "suggestion", comment: "An end before the start becomes a single line." },
+            { line: 2, endLine: 500, severity: "suggestion", comment: "A note cannot span the whole file." },
+            { line: 6, severity: "praise", comment: "Storing the index as you go avoids a second pass." },
+            { line: 4, severity: "issue", comment: "   " },
+        ], 7);
+        assert.deepEqual(notes.map((n) => [n.line, n.endLine]), [[2, 7], [3, 3], [6, 6]]);
+        assert.equal(notes.filter((n) => n.line === 6).length, 1);
+        assert.equal(cleanReview(Array.from({ length: 30 }, (_, i) => ({ line: (i % 7) + 1, severity: "suggestion" as const, comment: `Note number ${i}` })), 7).length, 8, "at most eight notes");
+    });
+
+    test("numbering counts from one, drops trailing blank lines, and cuts at whole lines", () => {
+        const numbered = numberLines(CODE, 10_000);
+        assert.equal(numbered.lines, 7);
+        assert.equal(numbered.text.split("\n")[0], "1: def two_sum(nums, target):");
+        assert.equal(numberLines("a\r\nb\r\n\r\n", 100).lines, 2);
+        const cut = numberLines(Array.from({ length: 50 }, (_, i) => `line ${i}`).join("\n"), 60);
+        assert.ok(cut.lines < 50 && cut.text.split("\n").length === cut.lines, "never a half line");
+    });
+
+    test("the report carries the cleaned review, and an answer without one is fine", async () => {
+        const withReview = await evaluate({
+            segment: (system, user) => ({
+                score: 6, summary: "Fine.", highlights: [], signals: [], strengths: [], gaps: [],
+                ...(/"problem":/.test(system) ? { problem: { complexity: { stated: "linear", verdict: "correct" }, codeQuality: "Readable.", feedback: "Good.", review: [
+                    { line: 2, severity: "praise", comment: "A hash map gives constant-time lookups." },
+                    { line: 40, severity: "issue", comment: "A line that does not exist." },
+                    { line: 4, endLine: 5, severity: "suggestion", comment: "Return as soon as the pair is found." },
+                ] } } : {}),
+                ...(user ? {} : {}),
+            }),
+        }, transcript(), [submission({ code: CODE, passed: 10, total: 10, status: "PASSED" })]);
+        assert.deepEqual(withReview.report.problems[0]!.review.map((n) => [n.line, n.endLine, n.severity]), [[2, 2, "praise"], [4, 5, "suggestion"]]);
+
+        const without = await evaluate({}, transcript(), [submission({ code: CODE, passed: 10, total: 10, status: "PASSED" })]);
+        assert.deepEqual(without.report.problems[0]!.review, []);
+    });
+
+    test("a malformed review does not spoil the rest of the analysis", async () => {
+        const { report } = await evaluate({
+            segment: (system) => ({
+                score: 6, summary: "Fine.", highlights: [], signals: [], strengths: [], gaps: [],
+                ...(/"problem":/.test(system) ? { problem: { complexity: { stated: null, verdict: "correct" }, codeQuality: "Readable.", feedback: "Good.", review: "not a list" } } : {}),
+            }),
+        }, transcript(), [submission({ code: CODE, passed: 10, total: 10, status: "PASSED" })]);
+        assert.deepEqual(report.problems[0]!.review, []);
+        assert.equal(report.problems[0]!.feedback, "Good.");
+    });
+
+    test("failing tests are named from the stored results, never their data", () => {
+        assert.deepEqual(failingTests([
+            { id: "e0", label: "Example 1", status: "pass" },
+            { id: "h0", label: "empty input", status: "fail", hidden: true },
+            { id: "h1", label: "large input", status: "timeout" },
+            { id: "h2", status: "error" },
+            { id: "h3", label: "later case", status: "skipped" },
+        ]), ["empty input (wrong answer)", "large input (too slow)", "h2 (runtime error)", "later case (not reached)"]);
+        assert.deepEqual(failingTests(null), []);
+        assert.deepEqual(failingTests("nonsense"), []);
     });
 });
 

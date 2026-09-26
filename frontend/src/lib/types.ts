@@ -112,12 +112,22 @@ export interface Evidence { turn: number; quote: string }
 
 export interface DimensionReport { key: string; label: string; score: number | null; weight: number; summary: string; evidence: Evidence[]; objective: boolean }
 export interface RoundReport { key: string; title: string; type: string; score: number | null; summary: string; highlights: string[] }
+/** One note in the line-by-line review of a submitted solution. */
+export interface CodeNote {
+    line: number;
+    endLine: number;
+    severity: "praise" | "suggestion" | "issue";
+    comment: string;
+}
+
 export interface ProblemReport {
     problemKey: string; title: string; difficulty: string; attempts: number; runs: number; passed: number; total: number; status: string;
     hintsUsed: number; movedOn: boolean; language: string; code: string;
     intendedComplexity: { time: string; space: string };
     complexity: { stated: string | null; verdict: "correct" | "partially" | "incorrect" | "not_discussed" };
     codeQuality: string; feedback: string;
+    /** Absent in reports made before the line-by-line review existed. */
+    review?: CodeNote[];
 }
 
 export interface ReportData {
