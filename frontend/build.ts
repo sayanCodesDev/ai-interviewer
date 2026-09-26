@@ -29,14 +29,21 @@ for (const [key, value] of Object.entries(process.env)) {
   if (key.startsWith("VITE_") && value !== undefined) envVars[`import.meta.env.${key}`] = JSON.stringify(value);
 }
 
-if (!envVars["import.meta.env.VITE_BACKEND_URL"]) {
+// Every variable the app reads is always defined. If one were left undefined, `import.meta.env.VITE_X` would be
+// evaluated in the browser, where `import.meta.env` doesn't exist, and throw. An empty string means "not set".
+for (const key of ["VITE_BACKEND_URL", "VITE_SITE_URL", "VITE_CONTACT_EMAIL"]) {
+  envVars[`import.meta.env.${key}`] ??= JSON.stringify("");
+}
+const isSet = (key: string) => JSON.parse(envVars[`import.meta.env.${key}`] ?? '""') !== "";
+
+if (!isSet("VITE_BACKEND_URL")) {
   console.warn(
     "⚠️  VITE_BACKEND_URL is not set in frontend/.env.production — the bundle will " +
     "fall back to http://localhost:2000, which will not work once deployed."
   );
 }
 
-if (!envVars["import.meta.env.VITE_SITE_URL"]) {
+if (!isSet("VITE_SITE_URL")) {
   console.warn(
     "⚠️  VITE_SITE_URL is not set in frontend/.env.production — canonical URLs, the sitemap and " +
     "social previews will point at https://ai-interviewer.example.com instead of your domain."
@@ -88,6 +95,20 @@ try {
 
 // A stable URL for the logo (the bundled copy has a hashed name).
 await cp(path.join(process.cwd(), "src", "favicon.svg"), path.join(outdir, "favicon.svg"));
+
+// `import.meta.env` doesn't exist in a browser. If any of it survived into the bundle, that code reads
+// `undefined` (or throws) there, and a setting like the API address silently falls back to its default.
+{
+  const leftovers: string[] = [];
+  for (const output of result.outputs.filter((o) => o.path.endsWith(".js"))) {
+    const text = await output.text();
+    for (const match of text.matchAll(/import\.meta\.env/g)) leftovers.push(`${path.basename(output.path)}: ...${text.slice(Math.max(0, match.index! - 40), match.index! + 60).replace(/\s+/g, " ")}...`);
+  }
+  if (leftovers.length > 0) {
+    console.error("The bundle still contains `import.meta.env`, which does not exist in a browser:\n  " + leftovers.slice(0, 5).join("\n  "));
+    process.exit(1);
+  }
+}
 
 if (!result.success) {
   for (const log of result.logs) console.error(log);
