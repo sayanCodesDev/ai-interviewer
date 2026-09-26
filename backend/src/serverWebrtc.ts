@@ -5,8 +5,8 @@ import { LLM } from "./services/llm"
 import { TTS } from "./services/tts"
 import { getSession, dropSession } from "./services/sessionStore";
 import { PcmFrameQueue, nextPacingStep, FRAME_BYTES, SAMPLES_PER_FRAME } from "./services/audioQueue";
-import { authMiddleware } from "./auth";
-import type { AuthenticatedRequest } from "./auth";
+import { requireAuth, currentUser } from "./http/middleware";
+import type { AuthenticatedRequest } from "./http/middleware";
 import OpusScript from 'opusscript';
 
 const router = express.Router();
@@ -18,7 +18,7 @@ const SILENCE_THRESHOLD_MS = 1500;
 const TARGET_SAMPLE_RATE = 48000;
 const TARGET_CHANNELS = 2;
 
-router.post("/api/webrtc/offer", authMiddleware, async function WebrtcConnection(req: AuthenticatedRequest, res) {
+router.post("/webrtc/offer", requireAuth, async function WebrtcConnection(req: AuthenticatedRequest, res) {
     // Everything below is per-connection state. It must never live in module
     // scope: two candidates interviewing at once would share utterances, abort
     // signals and barge-in flags.
@@ -63,7 +63,7 @@ router.post("/api/webrtc/offer", authMiddleware, async function WebrtcConnection
     }
 
     try {
-        const userId = req.user!.id;
+        const userId = currentUser(req).id;
         const session = getSession(userId);
         if (!session) {
             res.status(409).json({ msg: "No interview session found. Complete the setup form before starting the call." });

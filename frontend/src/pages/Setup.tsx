@@ -1,4 +1,3 @@
-import axios from "axios";
 import { ArrowRight, Check } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -10,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { AppLayout } from "@/layouts/AppLayout";
-import { BACKEND_URL } from "@/lib/config";
+import { api, apiErrorMessage } from "@/lib/api";
 import { resetInterviewSession } from "@/lib/session";
 import { usePageTitle } from "@/hooks/usePageTitle";
 
@@ -63,14 +62,14 @@ export function Setup() {
 
         setLoading(true);
         try {
-            await axios.post(`${BACKEND_URL}/api/pre-interview`, {
+            await api.post("/api/pre-interview", {
                 targetRole,
                 githubUrl: trimmed || undefined,
             });
             resetInterviewSession(targetRole);
             navigate(`/interview?userId=${userId || ""}`);
-        } catch (error: any) {
-            toast.error(error.response?.data?.msg || "We couldn't set up your interview. Please try again.");
+        } catch (error) {
+            toast.error(apiErrorMessage(error, "We couldn't set up your interview. Please try again."));
         } finally {
             setLoading(false);
         }

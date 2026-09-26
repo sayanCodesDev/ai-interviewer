@@ -1,7 +1,7 @@
 import { useMotionValue } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { BACKEND_URL } from "@/lib/config";
+import { apiFetch } from "@/lib/api";
 import { markInterviewEnded, markInterviewStarted } from "@/lib/session";
 
 export type SessionStatus = "connecting" | "live" | "reconnecting" | "failed";
@@ -185,16 +185,9 @@ export function useInterviewSession({ onEvent }: { onEvent: (event: ServerEvent)
             if (cancelled) return;
 
             // Send the FULL complete SDP (including embedded ICE candidates) to the server.
-            // The offer endpoint is authenticated, so carry both the cookie and the
-            // bearer token the same way axios does elsewhere in the app.
-            const token = localStorage.getItem("token");
-            const response = await fetch(`${BACKEND_URL}/api/webrtc/offer`, {
+            const response = await apiFetch("/api/webrtc/offer", {
                 method: "POST",
-                credentials: "include",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     sdp: pc.localDescription!.sdp,
                     type: pc.localDescription!.type,
