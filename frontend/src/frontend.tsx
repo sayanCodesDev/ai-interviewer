@@ -5,6 +5,7 @@
  * It is included in `src/index.html`.
  */
 
+import "./fonts.css";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.js";
 import { RecoilRoot } from "recoil";
