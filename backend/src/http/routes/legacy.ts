@@ -4,7 +4,6 @@ import { UrlsValidate } from "../../validate";
 import { GithubScrape } from "../../GithubScrape";
 import { createInterviewSession } from "../../services/llm";
 import { putSession } from "../../services/sessionStore";
-import { runCode } from "../../services/codeRunner";
 import { HttpError, parseInput } from "../errors";
 import { currentUser, requireAuth } from "../middleware";
 import type { RateLimits } from "../rateLimits";
@@ -32,10 +31,8 @@ export function legacyRouter(limits: RateLimits): Router {
         res.json({ githubUrlUsername, targetRole });
     });
 
-    router.post("/execute-code", requireAuth, limits.runCode, async (req, res) => {
-        const { code, language } = req.body ?? {};
-        res.json({ output: await runCode(code, language) });
-    });
+    // The old unsandboxed /execute-code endpoint is gone. Code now runs in the Docker sandbox through
+    // the interview API (added with the new interview room).
 
     return router;
 }
