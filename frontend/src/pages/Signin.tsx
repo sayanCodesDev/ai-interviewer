@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { PasswordInput } from "@/components/PasswordInput";
@@ -21,6 +21,9 @@ interface FormErrors {
 export function Signin() {
     usePageTitle("Sign in");
     const navigate = useNavigate();
+    const location = useLocation();
+    // Back to where the visitor was headed when the route guard sent them here.
+    const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? "/dashboard";
     const { acceptSession } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -42,7 +45,7 @@ export function Signin() {
             const response = await api.post("/api/auth/signin", { email: email.trim(), password });
             acceptSession(response.data);
             toast.success("Signed in");
-            navigate(`/form?userId=${response.data.user.id}`);
+            navigate(from, { replace: true });
         } catch (error) {
             setErrors({ form: apiErrorMessage(error, "We couldn't sign you in. Check your details and try again.") });
         } finally {

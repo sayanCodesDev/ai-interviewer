@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { logger } from "../observability/logger";
 import { codeRuns, firstAudioMs, firstSentenceMs, interviewsFinished, llmErrors } from "../observability/metrics";
-import { getLlm, models } from "../llm/client";
+import { getLlm, models, RateLimitedError } from "../llm/client";
 import { Conductor, type Turn } from "../interview/conductor";
 import { streamReply, type ReplyResult } from "../interview/dialogue";
 import { clientMessageSchema, type EndReason, type ServerEvent } from "../interview/events";
@@ -375,7 +375,9 @@ export class LiveInterview {
         } catch (error) {
             llmErrors.inc({ stage: "dialogue" });
             logger.error({ err: error, interviewId: this.id, kind: turn.kind }, "The interviewer's model call failed");
-            const apology = "Sorry, I had a technical hiccup. Could you say that again?";
+            const apology = error instanceof RateLimitedError
+                ? "Sorry, I'm a bit overloaded right now. Give me a moment, then say that again."
+                : "Sorry, I had a technical hiccup. Could you say that again?";
             sentences.push(apology);
             voice.speak(apology);
             this.send({ type: "CAPTION", id: captionId, role: "interviewer", text: apology, final: false });

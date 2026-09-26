@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { completeJson } from "../llm/json";
-import { models } from "../llm/client";
+import { RateLimitedError, models } from "../llm/client";
 import type { InterviewPlan } from "../interview/plan";
 import { ALL_PROBLEMS, getProblemDef } from "../interview/problems";
 import { UNTRUSTED_NOTICE, neutraliseDelimiters, sanitizeUntrusted, untrustedBlock } from "../interview/untrusted";
@@ -301,17 +301,22 @@ export async function evaluateInterview(input: EvaluationInput): Promise<ReportD
     const results: SegmentResult[] = [];
     const queue = [...segments];
     let failures = 0;
+    let capacityError: RateLimitedError | null = null;
     const worker = async () => {
         for (let segment = queue.shift(); segment; segment = queue.shift()) {
             try {
                 results.push(await analyseSegment(input, segment, metrics, dims));
             } catch (error) {
                 failures++;
+                if (error instanceof RateLimitedError) capacityError = error;
                 logger.warn({ err: error, interviewId: input.interview.id, segment: segment.id }, "Could not analyse one part of the interview");
             }
         }
     };
     await Promise.all(Array.from({ length: PARALLEL_SEGMENTS }, worker));
+    // Running out of the provider's allowance mid-report must not produce a report with parts silently missing.
+    // Throwing lets the worker hold the whole report back until capacity returns.
+    if (capacityError) throw capacityError;
     if (results.length === 0 && segments.length > 0) throw new Error("None of the interview parts could be analysed.");
     results.sort((a, b) => segments.indexOf(a.segment) - segments.indexOf(b.segment));
 

@@ -69,6 +69,17 @@ export class ModelRouter {
         s.cooldownUntil = Math.max(s.cooldownUntil, this.now() + ms);
     }
 
+    /**
+     * Whether any of these models can take a request right now, and if none can, how long until the
+     * soonest is likely to. A model that hit its daily allowance is cooling down for a long time, which
+     * is how "the provider is out of quota for today" becomes visible before someone starts an interview.
+     */
+    availability(models: string[]): { available: boolean; retryAfterMs: number } {
+        const waits = models.map((model) => Math.max(0, this.get(model).cooldownUntil - this.now()));
+        const soonest = waits.length > 0 ? Math.min(...waits) : 0;
+        return { available: soonest === 0, retryAfterMs: soonest };
+    }
+
     /** The provider told us this model's real limit. */
     learnLimit(model: string, tokensPerMinute: number): void {
         if (Number.isFinite(tokensPerMinute) && tokensPerMinute > 0) this.get(model).limit = tokensPerMinute;

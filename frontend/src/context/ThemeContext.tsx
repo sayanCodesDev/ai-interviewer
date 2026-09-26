@@ -28,8 +28,10 @@ function systemTheme(): Theme {
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
     // The inline script in index.html has already applied the right class, so start from it.
+    // On the server there is no document; the page renders in the light theme and the inline
+    // script in index.html applies the visitor's real theme before first paint.
     const [preferred, setPreferred] = useState<Theme>(() =>
-        document.documentElement.classList.contains("dark") ? "dark" : "light",
+        typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light",
     );
     const [forced, setForced] = useState<Theme | null>(null);
     const theme = forced ?? preferred;

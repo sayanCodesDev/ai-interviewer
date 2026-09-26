@@ -152,6 +152,44 @@
   100% { opacity: 0.5; }
 }
 
+/*
+ * First-screen entrance animations. Plain CSS rather than motion, so they start with the prerendered
+ * HTML instead of waiting for the JavaScript bundle (the headline would otherwise stay hidden until then).
+ * Each element sets --enter-delay / --enter-duration / --enter-rise inline. The reduced-motion rule
+ * at the bottom of this file collapses them to their end state.
+ */
+@keyframes enter-rise {
+  from { transform: translateY(115%); }
+}
+
+@keyframes enter-fade {
+  from { opacity: 0; }
+}
+
+@keyframes enter-fade-up {
+  from { opacity: 0; transform: translateY(var(--enter-rise, 16px)); }
+}
+
+@keyframes enter-draw {
+  from { transform: scaleX(0); }
+}
+
+@utility enter-rise {
+  animation: enter-rise var(--enter-duration, 0.9s) var(--ease-out-expo) var(--enter-delay, 0s) both;
+}
+
+@utility enter-fade {
+  animation: enter-fade var(--enter-duration, 0.8s) ease var(--enter-delay, 0s) both;
+}
+
+@utility enter-fade-up {
+  animation: enter-fade-up var(--enter-duration, 0.8s) var(--ease-out-expo) var(--enter-delay, 0s) both;
+}
+
+@utility enter-draw {
+  animation: enter-draw var(--enter-duration, 0.9s) var(--ease-out-expo) var(--enter-delay, 0s) both;
+}
+
 @utility text-display {
   font-family: var(--font-serif);
   font-weight: 400;

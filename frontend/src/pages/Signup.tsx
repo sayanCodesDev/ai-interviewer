@@ -50,7 +50,7 @@ export function Signup() {
             });
             acceptSession(response.data);
             toast.success("Account created");
-            navigate(`/form?userId=${response.data.user.id}`);
+            navigate("/setup");
         } catch (error) {
             const fields = apiFieldErrors(error);
             if (fields.password || fields.email || fields.name) {

@@ -39,17 +39,19 @@ interface TileProps {
     initials?: string;
     muted?: boolean;
     connecting?: boolean;
+    /** The interviewer is working out what to say. */
+    thinking?: boolean;
     /** Collapse to a small tile (avatar hidden) when the code editor takes the stage. */
     compact?: boolean;
     className?: string;
 }
 
 /** One participant in the interview room. Fixed dark palette so it looks the same in the landing page demo. */
-export function Tile({ kind, label, level, initials, muted = false, connecting = false, compact = false, className }: TileProps) {
+export function Tile({ kind, label, level, initials, muted = false, connecting = false, thinking = false, compact = false, className }: TileProps) {
     const heard = useSpeaking(level);
     const speaking = heard && !muted && !connecting;
 
-    const status = connecting ? "Connecting" : muted ? "Muted" : speaking ? "Speaking" : "Listening";
+    const status = connecting ? "Connecting" : muted ? "Muted" : speaking ? "Speaking" : thinking ? "Thinking" : "Listening";
 
     return (
         <div
@@ -66,10 +68,10 @@ export function Tile({ kind, label, level, initials, muted = false, connecting =
                     <span
                         className={cn(
                             "size-1.5 rounded-full transition-colors duration-300",
-                            connecting && "animate-live bg-night-amber",
+                            (connecting || (thinking && !speaking)) && "animate-live bg-night-amber",
                             !connecting && muted && "bg-night-red",
                             !connecting && !muted && speaking && "animate-live bg-signal",
-                            !connecting && !muted && !speaking && "bg-night-muted/50",
+                            !connecting && !muted && !speaking && !thinking && "bg-night-muted/50",
                         )}
                     />
                     <span className="hidden @[13rem]:inline">{status}</span>

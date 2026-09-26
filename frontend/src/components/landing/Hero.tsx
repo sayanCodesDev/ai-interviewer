@@ -6,20 +6,14 @@ import { ProductWindow } from "@/components/landing/ProductWindow";
 import { useStartInterview } from "@/components/landing/useStartInterview";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { EASE_OUT_EXPO } from "@/lib/motion";
 
 /** One line of the headline, revealed from behind a mask. */
 function Line({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
     return (
         <span className="-mb-[0.14em] block overflow-hidden pb-[0.14em]">
-            <m.span
-                className="block"
-                initial={{ y: "115%" }}
-                animate={{ y: 0 }}
-                transition={{ duration: 0.9, ease: EASE_OUT_EXPO, delay }}
-            >
+            <span className="enter-rise block" style={{ "--enter-delay": `${delay}s` } as React.CSSProperties}>
                 {children}
-            </m.span>
+            </span>
         </span>
     );
 }
@@ -28,12 +22,10 @@ function Line({ children, delay = 0 }: { children: React.ReactNode; delay?: numb
 function Emphasis({ children }: { children: React.ReactNode }) {
     return (
         <span className="relative inline-block italic">
-            <m.span
+            <span
                 aria-hidden
-                className="absolute inset-x-[-0.06em] bottom-[0.1em] -z-10 h-[0.42em] origin-left rounded-[0.08em] bg-signal dark:bg-transparent"
-                initial={{ scaleX: 0 }}
-                animate={{ scaleX: 1 }}
-                transition={{ duration: 0.9, ease: EASE_OUT_EXPO, delay: 1.05 }}
+                className="enter-draw absolute inset-x-[-0.06em] bottom-[0.1em] -z-10 h-[0.42em] origin-left rounded-[0.08em] bg-signal dark:bg-transparent"
+                style={{ "--enter-delay": "1.05s" } as React.CSSProperties}
             />
             <span className="dark:text-signal">{children}</span>
         </span>
@@ -54,38 +46,29 @@ export function Hero() {
     return (
         <section className="relative overflow-x-clip pt-32 pb-20 sm:pt-40 sm:pb-28">
             <div className="page-container">
-                <m.p
-                    className="label-mono flex items-center gap-2.5 text-muted-foreground"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.8, delay: 0.1 }}
-                >
+                <p className="enter-fade label-mono flex items-center gap-2.5 text-muted-foreground" style={{ "--enter-delay": "0.1s" } as React.CSSProperties}>
                     <span className="size-1.5 rounded-full bg-foreground" />
                     Voice-first technical interviews
-                </m.p>
+                </p>
 
                 <h1 className="text-display relative isolate mt-6">
-                    <Line>A technical interview</Line>
+                    <Line>A technical interview{" "}</Line>
                     <Line delay={0.09}>
                         that <Emphasis>actually talks back.</Emphasis>
                     </Line>
                 </h1>
 
                 <div className="mt-10 flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
-                    <m.p
-                        className="max-w-md text-[17px] leading-relaxed text-muted-foreground md:max-w-[22rem] lg:max-w-md"
-                        initial={{ opacity: 0, y: 16 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.8, ease: EASE_OUT_EXPO, delay: 0.45 }}
+                    <p
+                        className="enter-fade-up max-w-md text-[17px] leading-relaxed text-muted-foreground md:max-w-[22rem] lg:max-w-md"
+                        style={{ "--enter-delay": "0.45s" } as React.CSSProperties}
                     >
-                        Talk to an AI interviewer, solve real problems in a live code editor, and hear how you did before the session ends.
-                    </m.p>
+                        Talk to an AI interviewer, solve real problems in a live code editor, and get a scored report with a plan for what to practise next.
+                    </p>
 
-                    <m.div
-                        className="flex shrink-0 flex-col items-start gap-5 sm:flex-row sm:items-center sm:gap-7"
-                        initial={{ opacity: 0, y: 16 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.8, ease: EASE_OUT_EXPO, delay: 0.55 }}
+                    <div
+                        className="enter-fade-up flex shrink-0 flex-col items-start gap-5 sm:flex-row sm:items-center sm:gap-7"
+                        style={{ "--enter-delay": "0.55s" } as React.CSSProperties}
                     >
                         <Button variant="signal" size="lg" onClick={start} disabled={checking} className="group">
                             {checking && <Spinner />}
@@ -99,15 +82,12 @@ export function Hero() {
                             See how it works
                             <ArrowDown className="size-4 transition-transform duration-200 group-hover:translate-y-0.5" />
                         </a>
-                    </m.div>
+                    </div>
                 </div>
 
-                <m.div
-                    className="mt-14 sm:mt-20"
-                    style={{ perspective: 1600 }}
-                    initial={{ opacity: 0, y: 40 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 1, ease: EASE_OUT_EXPO, delay: 0.7 }}
+                <div
+                    className="enter-fade-up mt-14 sm:mt-20"
+                    style={{ perspective: 1600, "--enter-delay": "0.7s", "--enter-duration": "1s", "--enter-rise": "40px" } as React.CSSProperties}
                 >
                     <m.div
                         ref={windowRef}
@@ -117,7 +97,7 @@ export function Hero() {
                         <ProductWindow />
                     </m.div>
                     <p className="label-mono mt-6 text-center text-muted-foreground">The interview room · example session</p>
-                </m.div>
+                </div>
             </div>
         </section>
     );

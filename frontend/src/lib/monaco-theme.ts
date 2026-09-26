@@ -1,10 +1,11 @@
 import type { Monaco } from "@monaco-editor/react";
 
-export const MONACO_THEME = "interviewer-night";
+export const MONACO_THEME_NIGHT = "interviewer-night";
+export const MONACO_THEME_PAPER = "interviewer-paper";
 
-/** Registers an editor theme built from the app's night palette, so the editor matches the room around it. */
-export function defineInterviewerTheme(monaco: Monaco) {
-    monaco.editor.defineTheme(MONACO_THEME, {
+/** Registers two editor themes built from the app's palettes, so the editor matches the room around it. */
+export function defineInterviewerThemes(monaco: Monaco) {
+    monaco.editor.defineTheme(MONACO_THEME_NIGHT, {
         base: "vs-dark",
         inherit: true,
         rules: [
@@ -37,9 +38,36 @@ export function defineInterviewerTheme(monaco: Monaco) {
             "editorSuggestWidget.background": "#161613",
             "editorSuggestWidget.border": "#2A2A25",
             "editorSuggestWidget.selectedBackground": "#23231F",
+            "editorBracketMatch.background": "#C6F13522",
+            "editorBracketMatch.border": "#C6F13566",
             "scrollbarSlider.background": "#2A2A2566",
             "scrollbarSlider.hoverBackground": "#3A3A3388",
             "scrollbarSlider.activeBackground": "#4A494388",
+        },
+    });
+
+    monaco.editor.defineTheme(MONACO_THEME_PAPER, {
+        base: "vs",
+        inherit: true,
+        rules: [
+            { token: "comment", foreground: "77756C", fontStyle: "italic" },
+            { token: "keyword", foreground: "3F6B00" },
+            { token: "string", foreground: "8A5A00" },
+            { token: "number", foreground: "B5470D" },
+            { token: "type", foreground: "1D5C8A" },
+        ],
+        colors: {
+            "editor.background": "#FBFAF6",
+            "editor.foreground": "#151512",
+            "editorLineNumber.foreground": "#B5B2A6",
+            "editorLineNumber.activeForeground": "#6B6A63",
+            "editor.lineHighlightBackground": "#F1EFE8",
+            "editor.lineHighlightBorder": "#00000000",
+            "editor.selectionBackground": "#C6F13566",
+            "editorCursor.foreground": "#151512",
+            "editorIndentGuide.background1": "#E7E4DA",
+            "editorWidget.background": "#FFFFFF",
+            "editorWidget.border": "#E3E0D7",
         },
     });
 }
