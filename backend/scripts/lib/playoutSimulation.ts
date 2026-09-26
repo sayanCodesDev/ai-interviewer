@@ -25,6 +25,8 @@ export interface Result {
     silenceInside: number;
     maxGap: number;
     finished: boolean;
+    /** When the last word finished playing, from the text being sent. */
+    endsAt: number;
 }
 
 /** 48 kHz mono 16-bit speech is 96 bytes per millisecond. */
@@ -60,5 +62,5 @@ export function simulate(scenario: Scenario, config: PlayoutConfig): Result {
         }
         if (started && playedFrames * 20 >= scenario.totalAudioMs - 20) done = true;
     }
-    return { startDelay, startFromSend, underruns: gaps.length, gaps, silenceInside: silentInside, maxGap: Math.max(0, ...gaps), finished: done };
+    return { startDelay, startFromSend, underruns: gaps.length, gaps, silenceInside: silentInside, maxGap: Math.max(0, ...gaps), finished: done, endsAt: now };
 }

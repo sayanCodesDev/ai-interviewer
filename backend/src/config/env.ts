@@ -71,10 +71,10 @@ const schema = z.object({
      * Audio held back before the interviewer starts a sentence, and before resuming after running dry. More is smoother on
      * a slow or jittery connection (to the speech provider or to the browser) and costs that much extra delay. 0 disables it.
      */
-    VOICE_PREROLL_MS: optionalInt(350),
-    VOICE_RESUME_MS: optionalInt(220),
+    VOICE_PREROLL_MS: optionalInt(450),
+    VOICE_RESUME_MS: optionalInt(500),
     /** The most the buffer may grow to when the speech provider is slower than real time. Set to the pre-roll to turn this off. */
-    VOICE_MAX_LEAD_MS: optionalInt(2000),
+    VOICE_MAX_LEAD_MS: optionalInt(4000),
     /** Ignore the interviewer's own voice when it leaks back through the candidate's microphone. On by default. */
     VOICE_ECHO_GUARD: booleanFlag(true),
     /** Volume boost for the interviewer's voice, in decibels, with a limiter so loud syllables don't crackle. 0 turns it off. */

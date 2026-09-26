@@ -36,11 +36,11 @@ export interface PlayoutConfig {
 }
 
 export const DEFAULT_PLAYOUT: PlayoutConfig = {
-    preRollMs: 350,
-    resumeMs: 220,
-    maxWaitMs: 2200,
+    preRollMs: 450,
+    resumeMs: 500,
+    maxWaitMs: 4000,
     stallGiveUpMs: 6000,
-    maxLeadMs: 2000,
+    maxLeadMs: 4000,
     rateWindowMs: 600,
 };
 

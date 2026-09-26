@@ -7,7 +7,7 @@
 // whether the connection to the speech service is steady, whether this computer keeps time well enough to play audio,
 // and (if not) which VOICE_PREROLL_MS to set. It costs a few thousandths of a cent per run.
 //
-//   VOICE=aura-2-apollo-en   another voice        ROUNDS=3   more samples (default 2)
+//   VOICE=aura-2-apollo-en   another voice        ROUNDS=3   more simulated calls (default 2)
 //   SAVE=/tmp/trace.json     keep the recording (for TRACES=/tmp/trace.json npx tsx scripts/playout-sim.ts)
 import fs from "node:fs";
 import { monitorEventLoopDelay } from "node:perf_hooks";
@@ -43,35 +43,49 @@ const percentile = (values: number[], p: number) => {
     return sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))]! : 0;
 };
 
-async function record(sentences: string[]): Promise<Recording> {
+/** One simulated call: a single connection to the speech service, with several replies spoken on it, as a live interview does. */
+async function recordCall(replies: string[][]): Promise<Recording[]> {
     const connection = await connectTts(VOICE);
     const raw = (connection as any).socket;
     raw.binaryType = "nodebuffer";
     if (raw.socket) raw.socket.binaryType = "nodebuffer";
-    const recording: Recording = { sentences, chunks: [], flushedAt: -1 };
+    let current: Recording | null = null;
     let startedAt = 0;
-    let finished!: () => void;
-    const done = new Promise<void>((resolve) => { finished = resolve; });
+    let finished: (() => void) | null = null;
     raw.addEventListener("message", async (event: any) => {
         let data = event.data;
         if (typeof Blob !== "undefined" && data instanceof Blob) data = Buffer.from(await data.arrayBuffer());
+        if (!current) return;
         if (typeof data === "string") {
-            try { if (JSON.parse(data).type === "Flushed") { recording.flushedAt = Date.now() - startedAt; finished(); } } catch { /* not a control message */ }
+            try { if (JSON.parse(data).type === "Flushed") { current.flushedAt = Date.now() - startedAt; finished?.(); } } catch { /* not a control message */ }
             return;
         }
         const audio = Buffer.isBuffer(data) ? data : Buffer.from(data instanceof ArrayBuffer ? data : (data as Uint8Array).buffer);
-        recording.chunks.push({ t: Date.now() - startedAt, ms: audio.length / 96 });
+        current.chunks.push({ t: Date.now() - startedAt, ms: audio.length / 96 });
     });
-    connection.on("error", () => finished());
-    startedAt = Date.now();
-    for (let i = 0; i < sentences.length; i++) {
-        if (i > 0) await sleep(SENTENCE_GAP_MS);
-        connection.sendText({ type: "Speak", text: speechText(sentences[i]!) });
+    connection.on("error", () => finished?.());
+
+    const recordings: Recording[] = [];
+    try {
+        await sleep(1500); // a call takes a moment to set up before the greeting
+        for (const sentences of replies) {
+            current = { sentences, chunks: [], flushedAt: -1 };
+            const done = new Promise<void>((resolve) => { finished = resolve; });
+            startedAt = Date.now();
+            for (let i = 0; i < sentences.length; i++) {
+                if (i > 0) await sleep(SENTENCE_GAP_MS);
+                connection.sendText({ type: "Speak", text: speechText(sentences[i]!) });
+            }
+            connection.sendFlush({ type: "Flush" });
+            await Promise.race([done, sleep(30_000)]);
+            recordings.push(current);
+            current = null;
+            await sleep(1500); // the candidate speaks before the next reply
+        }
+    } finally {
+        try { connection.close(); } catch { /* already closed */ }
     }
-    connection.sendFlush({ type: "Flush" });
-    await Promise.race([done, sleep(20_000)]);
-    try { connection.close(); } catch { /* already closed */ }
-    return recording;
+    return recordings;
 }
 
 function scenarioOf(recording: Recording, name: string): Scenario {
@@ -84,9 +98,17 @@ function scenarioOf(recording: Recording, name: string): Scenario {
     };
 }
 
+/** Delivery speed of one reply: seconds of speech received per second of waiting, from the first sound to the last. */
+function speedOf(recording: Recording): number {
+    const audio = recording.chunks.reduce((sum, c) => sum + c.ms, 0);
+    return audio / Math.max(1, recording.chunks.at(-1)!.t - recording.chunks[0]!.t);
+}
+
+interface Sample { scenario: Scenario; speed: number; long: boolean }
 interface Outcome { stops: number; audible: number; repliesWithStops: number; replies: number; meanStart: number; worstStart: number; smooth: boolean }
-function judge(scenarios: Scenario[], settings: PlayoutConfig): Outcome {
-    const results = scenarios.map((scenario) => simulate(scenario, settings));
+
+function judge(samples: Sample[], settings: PlayoutConfig): Outcome {
+    const results = samples.map((sample) => simulate(sample.scenario, settings));
     const starts = results.map((r) => r.startFromSend);
     const stops = results.reduce((sum, r) => sum + r.gaps.length, 0);
     const audible = results.reduce((sum, r) => sum + r.gaps.filter((g) => g >= AUDIBLE_GAP_MS).length, 0);
@@ -97,8 +119,8 @@ function judge(scenarios: Scenario[], settings: PlayoutConfig): Outcome {
         replies: results.length,
         meanStart: starts.reduce((sum, v) => sum + v, 0) / Math.max(1, starts.length),
         worstStart: Math.max(0, ...starts),
-        // An occasional one-frame hole at a sentence join is fine; anything longer, or many of them, is not.
-        smooth: audible === 0 && stops <= Math.ceil(results.length / 4),
+        // An occasional one-frame hole at a sentence join is fine, and so is one noticeable stop in about ten replies; more is not.
+        smooth: audible <= Math.ceil(results.length / 10) && stops <= Math.ceil(results.length / 4),
     };
 }
 const describe = (o: Outcome) => (o.stops === 0 ? "no stops in any reply" : `${o.stops} stops in ${o.repliesWithStops}/${o.replies} replies (${o.audible} of them 40 ms or longer)`);
@@ -108,18 +130,13 @@ async function main() {
         console.error("DEEPGRAM_API_KEY is not set, so there is no voice to check. Add it to backend/.env.");
         process.exit(1);
     }
-    console.log(`Checking the voice "${VOICE}" from this machine (${ROUNDS * REPLIES.length} short replies)...\n`);
+    console.log(`Checking the voice "${VOICE}" from this machine (${ROUNDS} simulated call${ROUNDS === 1 ? "" : "s"}, ${REPLIES.length} replies each; about ${Math.round((ROUNDS * REPLIES.length * 8) / 6) / 10} minutes)...\n`);
 
     const loop = monitorEventLoopDelay({ resolution: 10 });
     loop.enable();
     const recordings: Recording[] = [];
     try {
-        for (let round = 0; round < ROUNDS; round++) {
-            for (const sentences of REPLIES) {
-                recordings.push(await record(sentences));
-                await sleep(200);
-            }
-        }
+        for (let round = 0; round < ROUNDS; round++) recordings.push(...(await recordCall(REPLIES)));
     } catch (error) {
         const message = (error as Error).message;
         console.error(`Could not reach the speech service: ${message}`);
@@ -137,12 +154,14 @@ async function main() {
     }
     if (process.env.SAVE) fs.writeFileSync(process.env.SAVE, JSON.stringify(usable));
 
+    const samples: Sample[] = usable.map((r, i) => ({ scenario: scenarioOf(r, `reply ${i + 1}`), speed: speedOf(r), long: r.chunks.length > 60 }));
+    // Speed is only meaningful for replies long enough to measure; a reply that arrives slower than it plays cannot be smoothed.
+    const slow = samples.filter((sample) => sample.long && sample.speed < 1);
+    const ordinary = samples.filter((sample) => !slow.includes(sample));
+
     // ---- what the speech service did
     const firstAudio = usable.map((r) => r.chunks[0]!.t);
-    const speeds = usable.filter((r) => r.chunks.length > 60).map((r) => {
-        const audio = r.chunks.reduce((sum, c) => sum + c.ms, 0);
-        return audio / Math.max(1, r.chunks.at(-1)!.t - r.chunks[0]!.t);
-    });
+    const speeds = samples.filter((sample) => sample.long).map((sample) => sample.speed);
     let worstStall = 0;
     for (const r of usable) for (let i = 1; i < r.chunks.length; i++) worstStall = Math.max(worstStall, r.chunks[i]!.t - r.chunks[i - 1]!.t);
     console.log("The speech service");
@@ -157,13 +176,16 @@ async function main() {
     console.log(`  the 20 ms audio clock is driven by the event loop: it ran late by ${lagP99.toFixed(0)} ms (p99) and ${lagMax.toFixed(0)} ms (worst) while this ran`);
 
     // ---- the smoothing buffer, on that recording
-    const scenarios = usable.map((r, i) => scenarioOf(r, `reply ${i + 1}`));
     const current: PlayoutConfig = { ...DEFAULT_PLAYOUT, preRollMs: config.voicePreRollMs, resumeMs: config.voiceResumeMs, maxLeadMs: config.voiceMaxLeadMs };
-    const without = judge(scenarios, { preRollMs: 0, resumeMs: 0, maxWaitMs: 0, stallGiveUpMs: DEFAULT_PLAYOUT.stallGiveUpMs, maxLeadMs: 0, rateWindowMs: DEFAULT_PLAYOUT.rateWindowMs });
-    const now = judge(scenarios, current);
-    console.log("\nWhat the interviewer's voice would sound like on this connection");
+    const without = judge(ordinary, { preRollMs: 0, resumeMs: 0, maxWaitMs: 0, stallGiveUpMs: DEFAULT_PLAYOUT.stallGiveUpMs, maxLeadMs: 0, rateWindowMs: DEFAULT_PLAYOUT.rateWindowMs });
+    const now = judge(ordinary, current);
+    console.log(`\nWhat the interviewer's voice would sound like on this connection (${ordinary.length} ordinary replies${slow.length ? `; ${slow.length} slow ${slow.length === 1 ? "one is" : "ones are"} counted separately below` : ""})`);
     console.log(`  without smoothing: ${describe(without)}; first word ${without.meanStart.toFixed(0)} ms after the text is sent`);
     console.log(`  with your settings (VOICE_PREROLL_MS=${config.voicePreRollMs}, VOICE_RESUME_MS=${config.voiceResumeMs}, VOICE_MAX_LEAD_MS=${config.voiceMaxLeadMs}): ${describe(now)}; first word ${now.meanStart.toFixed(0)} ms after the text is sent (slowest ${now.worstStart.toFixed(0)} ms)`);
+    if (slow.length > 0) {
+        const withSlow = judge(slow, current);
+        console.log(`  the slow repl${slow.length === 1 ? "y" : "ies"} (${slow.map((sample) => `${sample.speed.toFixed(2)}x`).join(", ")}) with your settings: ${describe(withSlow)}`);
+    }
 
     // ---- verdict
     console.log("\nVerdict");
@@ -177,7 +199,7 @@ async function main() {
         const tries: Array<[number, number, number]> = [[600, 300, 3000], [800, 400, 4000], [1000, 500, 5000], [1500, 700, 6000]];
         let advice = "";
         for (const [preRollMs, resumeMs, maxLeadMs] of tries) {
-            const outcome = judge(scenarios, { ...current, preRollMs, resumeMs, maxLeadMs });
+            const outcome = judge(ordinary, { ...current, preRollMs, resumeMs, maxLeadMs });
             if (outcome.smooth) {
                 advice = ` Set VOICE_PREROLL_MS=${preRollMs} VOICE_RESUME_MS=${resumeMs} VOICE_MAX_LEAD_MS=${maxLeadMs} in backend/.env: the voice then stays smooth here, and the first word comes about ${outcome.meanStart.toFixed(0)} ms after the text is sent.`;
                 break;
@@ -185,9 +207,10 @@ async function main() {
         }
         console.log(`  - The speech service reaches you unevenly, and even the buffer runs dry.${advice || " No buffer setting fixes this; the connection to the speech service itself is the problem (try another network, or turn off a VPN)."}`);
     }
-    if (Math.min(...speeds) < 1) {
+    if (slow.length > 0) {
         problems++;
-        console.log("  - The speech service delivered audio slower than it plays for at least one reply, so pauses in the middle are unavoidable on this connection.");
+        const share = Math.round((100 * slow.length) / samples.length);
+        console.log(`  - ${slow.length} of ${samples.length} replies (${share}%) came from the speech service slower than they play. That is the service being slow at that moment, not this computer or its settings; such a reply pauses in the middle whatever the buffer does (the buffer keeps the pauses few). Now and then is normal. If it is most replies, check the provider's status page and your plan's limits, and try again on another network.`);
     }
     if (problems === 0) {
         console.log(`  Nothing to fix here. ${without.smooth ? "Speech arrives smoothly on this connection." : `Speech arrives in uneven bursts, as it does from any speech service; the smoothing buffer turns ${without.stops} stops into ${now.stops}.`}`);
