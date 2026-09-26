@@ -112,8 +112,15 @@ cd ai-interviewer
    GROQ_API_KEY="your_groq_api_key"
    DATABASE_URL="postgresql://user:password@localhost:5432/ai_interviewer?sslmode=require"
    JWT_SECRET="your_jwt_secret_key_here"
-   ALLOWED_ORIGINS="http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000"
+   # Comma-separated list of your frontend origins
+   ALLOWED_ORIGINS="http://localhost:3000,http://localhost:5173"
+   # Optional — defaults to qwen/qwen3.8-27b. Must be a model your key can reach;
+   # the server prints the available list at startup if this one is wrong.
+   GROQ_MODEL="qwen/qwen3.8-27b"
    ```
+
+   > `JWT_SECRET` is required when `NODE_ENV=production`. In development the server
+   > falls back to a random per-process secret, so sessions end at every restart.
 
 4. **Run Database Migrations & Prisma Setup**:
    ```bash
@@ -176,7 +183,13 @@ ai-interviewer/
 │   │   └── schema.prisma        # PostgreSQL database schema
 │   ├── src/
 │   │   ├── GithubScrape/        # GitHub repo scraping utilities
-│   │   ├── services/            # Groq LLM, Deepgram STT & TTS integration
+│   │   ├── services/
+│   │   │   ├── llm.ts           # Groq streaming + interviewer prompt, per-session transcripts
+│   │   │   ├── stt.ts           # Deepgram speech-to-text socket
+│   │   │   ├── tts.ts           # Deepgram text-to-speech socket
+│   │   │   ├── sessionStore.ts  # Per-candidate interview sessions (in-memory, TTL'd)
+│   │   │   └── codeRunner.ts    # Runs submitted code in an isolated subprocess
+│   │   ├── auth.ts              # JWT signing & auth middleware
 │   │   ├── index.ts             # Express API server & Auth endpoints
 │   │   ├── serverWebrtc.ts      # Werift WebRTC audio pipeline
 │   │   └── validate.ts          # Request validation
@@ -185,12 +198,11 @@ ai-interviewer/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/          # Interview UI, Monaco Editor, Forms, Auth
-│   │   ├── state/               # Recoil global state management
+│   │   ├── lib/config.ts        # Backend origin (VITE_BACKEND_URL)
 │   │   ├── App.tsx              # Main Routing & UI logic
 │   │   └── index.ts             # Bun development entry point
-│   ├── package.json
-│   └── tailwind.config.js
-├── AWS_DEPLOYMENT_GUIDE.md      # AWS EC2 + S3 + CloudFront deployment guide
+│   ├── build.ts                 # Production bundle (Tailwind v4 via bun-plugin-tailwind)
+│   └── package.json
 └── README.md                    # Project documentation
 ```
 
@@ -198,9 +210,16 @@ ai-interviewer/
 
 ## ☁️ Deployment
 
-For deploying the application to AWS (EC2 for backend, S3 + CloudFront for frontend, RDS for database), check out the step-by-step guide:
+The backend runs as a long-lived Node process (EC2 or any VM — it holds WebRTC and
+Deepgram sockets, so it is not serverless-friendly). The frontend is a static bundle
+from `bun run build`, servable from S3 + CloudFront or any static host.
 
-👉 **[AWS Deployment Guide](AWS_DEPLOYMENT_GUIDE.md)**
+Two things to get right when deploying:
+
+- Set `ALLOWED_ORIGINS` on the backend to your frontend origin, and `VITE_BACKEND_URL`
+  in `frontend/.env.production` to the backend origin, before running the build.
+- Serve both over HTTPS. Browsers only grant microphone access on secure origins, and
+  the auth cookie is only sent cross-site when it is marked `Secure`.
 
 ---
 
