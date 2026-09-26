@@ -4,7 +4,8 @@ import { BEHAVIORAL_SAMPLES, FORMAT_CONTENT, PRODUCT_STATS, ROLE_CONTENT } from 
 export const SITE_NAME = "AI Interviewer";
 
 /** The public origin, used for canonical URLs and the sitemap. Set VITE_SITE_URL for the deployed build. */
-const configuredSiteUrl: string | undefined = typeof import.meta !== "undefined" && import.meta.env ? import.meta.env.VITE_SITE_URL : undefined;
+// Written as a plain expression on purpose: see src/lib/config.ts.
+const configuredSiteUrl: string | undefined = import.meta.env.VITE_SITE_URL;
 export const SITE_URL: string = (configuredSiteUrl || "https://ai-interviewer.example.com").replace(/\/+$/, "");
 
 export interface Seo {
