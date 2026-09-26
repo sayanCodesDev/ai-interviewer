@@ -9,22 +9,22 @@ import { cn } from "@/lib/utils";
 const STEPS = [
     {
         title: "Set up",
-        text: "Pick the role you're preparing for and, if you like, share your GitHub so the questions fit what you've built.",
+        text: "Choose the role and your level, then paste the job description. Add your resume or GitHub and the questions fit what you've actually built.",
         Scene: SetupScene,
     },
     {
         title: "Talk",
-        text: "The interviewer opens with a quick hello, then asks about your background. Answer out loud, like a real call.",
+        text: "The interviewer speaks first, asks about your background and follows up on what you say. Answer out loud, like a real call.",
         Scene: TalkScene,
     },
     {
         title: "Code",
-        text: "For each coding problem an editor opens beside the conversation. Write, run and submit, then talk through the complexity.",
+        text: "For each problem an editor opens beside the conversation. Run your code on the examples, submit it against hidden tests, then talk through the complexity.",
         Scene: CodeScene,
     },
     {
-        title: "Get feedback",
-        text: "Before the session closes, the interviewer tells you what went well and what to sharpen.",
+        title: "Get your report",
+        text: "Minutes later you have a score out of 100, feedback on every part, the full transcript and a plan for what to practise next.",
         Scene: FeedbackScene,
     },
 ] as const;

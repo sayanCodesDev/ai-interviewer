@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { config } from "../../config/env";
+import { llmCapacity } from "../../llm/client";
 import { logger } from "../../observability/logger";
 import { getOwnedInterview, finishInterview, readPlan } from "../../interview/service";
 import { LiveInterview } from "../../webrtc/live";
@@ -17,6 +18,12 @@ const offerSchema = z.object({
 });
 
 const idSchema = z.uuid("That isn't a valid interview id.");
+
+function describeWait(seconds: number): string {
+    if (seconds < 90) return "a minute";
+    if (seconds < 3600) return `about ${Math.ceil(seconds / 60)} minutes`;
+    return `about ${Math.ceil(seconds / 3600)} hour${seconds > 5400 ? "s" : ""}`;
+}
 
 export function webrtcRouter(limits: RateLimits): Router {
     const router = Router();
@@ -50,6 +57,13 @@ export function webrtcRouter(limits: RateLimits): Router {
             if (liveCount() >= config.maxConcurrentInterviews) {
                 res.setHeader("Retry-After", "30");
                 throw new HttpError(503, "We're at capacity right now. Please try again in a minute.", "at_capacity");
+            }
+            // A free-tier key runs out of its daily allowance; starting a call that can't get a single reply
+            // would only end in an apology, so say so up front and leave the interview ready to start later.
+            const capacity = llmCapacity();
+            if (!capacity.available && capacity.retryAfterSeconds > 20) {
+                res.setHeader("Retry-After", String(capacity.retryAfterSeconds));
+                throw new HttpError(503, `The AI interviewer has reached its usage limit for now. Your interview is saved; please try again in ${describeWait(capacity.retryAfterSeconds)}.`, "llm_capacity", { retryAfterSeconds: capacity.retryAfterSeconds });
             }
             const plan = readPlan(row);
             if (!plan) throw new HttpError(409, "Your interview is still being prepared.", "not_ready");

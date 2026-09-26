@@ -13,7 +13,7 @@ export function useStartInterview() {
         setChecking(true);
         try {
             const current = status === "authenticated" ? user : await refresh();
-            navigate(current ? `/form?userId=${current.id}` : "/signin");
+            navigate(current ? "/setup" : "/signin");
         } finally {
             setChecking(false);
         }

@@ -85,7 +85,7 @@ export function FeedbackScene() {
                 <Waveform level={level} />
             </div>
             <div>
-                <p className="label-mono text-night-muted">Wrap-up · example</p>
+                <p className="label-mono text-night-muted">Your report · example</p>
                 <blockquote className="mt-4 font-serif text-2xl leading-snug tracking-tight italic sm:text-[32px]">
                     “Clean approach, and good instincts on the follow-ups. Next time, say your edge cases out loud before you start typing.”
                 </blockquote>

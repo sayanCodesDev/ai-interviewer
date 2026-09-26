@@ -1,1 +1,14 @@
-/* /index.html 200
+# Netlify / Cloudflare Pages style rewrites. Prerendered pages (/, /mock-interviews/*, /privacy, /terms)
+# are real files and win over these rules. The app routes get the empty app shell, and anything else is
+# a genuine 404 instead of a page that pretends to exist.
+/signin        /app.html  200
+/signup        /app.html  200
+/dashboard     /app.html  200
+/setup         /app.html  200
+/lobby/*       /app.html  200
+/interview/*   /app.html  200
+/report/*      /app.html  200
+/form          /app.html  200
+/interview     /app.html  200
+/result        /app.html  200
+/*             /404.html  404

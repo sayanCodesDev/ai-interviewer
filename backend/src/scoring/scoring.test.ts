@@ -11,7 +11,8 @@ import { estimateTokens } from "../llm/router";
 import { evaluateInterview, verifyEvidence, type EvaluationInput } from "./evaluate";
 import { computeMetrics, type SubmissionRow, type TurnRow } from "./metrics";
 import { DIMENSIONS, applicableDimensions, bandFor, overallScore, resourcesFor } from "./rubric";
-import { claimNextReport } from "./worker";
+import { RateLimitedError } from "../llm/client";
+import { claimNextReport, processReport } from "./worker";
 import { generateReport } from "./report";
 
 // ------------------------------------------------------------------------------------------ fixtures
@@ -375,6 +376,22 @@ describe("report generation and the worker", () => {
         // Generating again replaces the report instead of failing on the unique key.
         await generateReport(id);
         assert.equal(await prisma.report.count(), 1);
+    });
+
+    test("when the provider is out of capacity the report waits instead of failing or using up an attempt", async () => {
+        setLlmForTesting(new FakeLlm(() => { throw new RateLimitedError(20 * 60_000); }));
+        const id = await finishedInterview();
+        assert.equal(await claimNextReport(), id);
+        await processReport(id);
+
+        const row = await prisma.interview.findUniqueOrThrow({ where: { id } });
+        assert.equal(row.reportStatus, "PENDING", "still waiting, not FAILED");
+        assert.equal(row.reportAttempts, 1, "no further attempt was used up");
+        assert.equal(await claimNextReport(), null, "not claimed again while the wait lasts");
+        assert.equal(await prisma.report.count(), 0, "no partial report was saved");
+
+        await prisma.$executeRaw`UPDATE "Interview" SET "updatedAt" = (now() AT TIME ZONE 'UTC') - interval '1 minute' WHERE id = ${id}`;
+        assert.equal(await claimNextReport(), id, "claimed once the wait is over");
     });
 
     test("exactly one of several racing workers gets a pending job", async () => {
