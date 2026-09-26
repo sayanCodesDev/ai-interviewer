@@ -9,7 +9,7 @@
 
 const FILLER_ONLY = /^(?:(?:um+|uh+|er+|ah+|hm+|hmm+|mm+|mhm|uh-huh|umm+)[\s,.!?…-]*)+$/i;
 /** Acknowledgements that shouldn't interrupt the interviewer. */
-const BACKCHANNEL = /^(?:(?:yeah|yes|yep|yup|okay|ok|right|sure|mhm|mm-hmm|uh-huh|got it|i see|alright|cool|great|nice)[\s,.!?…-]*)+$/i;
+const BACKCHANNEL = /^(?:(?:yeah|yes|yep|yup|okay|ok|right|sure|mhm|mm-hmm|uh-huh|got it|i see|alright|cool|great|nice|thanks|thank you|understood|makes sense)[\s,.!?…-]*)+$/i;
 /** Words that mean the speaker is mid-sentence. */
 const TRAILING_CUES = new Set([
     "and", "but", "so", "because", "or", "then", "like", "the", "a", "an", "to", "of", "with", "that", "which", "if", "when",
@@ -18,16 +18,19 @@ const TRAILING_CUES = new Set([
 ]);
 
 export const TURN_TIMING = {
-    /** After a full, punctuated sentence of some length. */
-    complete: 650,
+    /**
+     * After a full, punctuated sentence of some length. An interview answer is thought out as it is spoken, so a pause after a
+     * sentence is usually a breath before the next one; cutting in there makes the interviewer answer half an answer.
+     */
+    complete: 1100,
     /** After a very short punctuated reply ("Yes.", "I think so."). */
-    short: 950,
+    short: 1500,
     /** Ends without punctuation, or trails off. */
-    unfinished: 1700,
+    unfinished: 2200,
     /** Ends on a connective that promises more. */
-    trailing: 2300,
+    trailing: 3000,
     /** A hard ceiling: never wait longer than this after the last words. */
-    max: 2600,
+    max: 3500,
 } as const;
 
 export function isFillerOnly(text: string): boolean {
@@ -64,7 +67,7 @@ export function computeWaitMs(utterance: string, speechFinal = false): number {
     else wait = TURN_TIMING.unfinished;
 
     // The speech recogniser heard a natural end of speech; trust it a little, but never for a trailing cue.
-    if (speechFinal && wait !== TURN_TIMING.trailing) wait = Math.round(wait * 0.75);
+    if (speechFinal && wait !== TURN_TIMING.trailing) wait = Math.round(wait * 0.85);
     return Math.min(wait, TURN_TIMING.max);
 }
 
@@ -128,7 +131,7 @@ export class TurnTaker {
         if (this.disposed || !this.pending.trim() || isFillerOnly(this.pending)) return;
         this.cancelTimer();
         // Shorten to the "complete" wait: the recogniser is confident, but a trailing cue still gets its time.
-        const wait = Math.min(computeWaitMs(this.pending, true), TURN_TIMING.complete + 250);
+        const wait = Math.min(computeWaitMs(this.pending, true), TURN_TIMING.complete + 300);
         this.timer = this.setTimer(() => {
             this.timer = null;
             this.flush();

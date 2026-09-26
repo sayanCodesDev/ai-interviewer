@@ -76,7 +76,7 @@ export const directives = {
             "No marker.",
         ),
 
-    respond: (view: TalkView, candidateIsBrief: boolean, moveOn = false) => {
+    respond: (view: TalkView, candidateIsBrief: boolean, moveOn = false, mayMoveOn = true) => {
         const canProbe = view.probesUsed < view.maxProbes && !moveOn;
         return lines(
             `CURRENT STEP: ${view.roundTitle}, question ${view.number} of ${view.total} (${view.topic}). You asked: "${view.prompt}"`,
@@ -88,8 +88,12 @@ export const directives = {
             candidateIsBrief && !moveOn && "- Their answer was very short: invite more detail or an example. Do not advance yet.",
             moveOn && "- They have now given several very short answers in a row. Say kindly that it's fine, without pressing, and end your reply with [[ADVANCE]].",
             !moveOn && (canProbe
-                ? "- Then EITHER ask ONE targeted follow-up about a real gap, OR, if the answer was solid or you have heard enough, end your reply with [[ADVANCE]]."
+                ? mayMoveOn
+                    ? "- Then EITHER ask ONE targeted follow-up about a real gap, OR, if the answer was solid or you have heard enough, end your reply with [[ADVANCE]]."
+                    : "- They have said only a little so far, so do NOT move on and do not use [[ADVANCE]]. Ask ONE targeted follow-up, or invite them to say more about how they did it."
                 : "- You may not ask any more follow-ups on this question. Acknowledge and end your reply with [[ADVANCE]]."),
+            "- If it sounds like they might still be thinking or were cut short, keep your reply to a short encouraging sentence and let them continue.",
+            "Stay on this question. Never bring up a new topic or the next question yourself: the interview moves on only when you end with the marker.",
             "Never ask two questions. Never say the marker aloud.",
             view.time,
         );
@@ -107,10 +111,14 @@ export const directives = {
 
     presentProblem: (view: { number: number; total: number; title: string; difficulty: string; statement: string; firstProblem: boolean; time: string }) =>
         lines(
-            `CURRENT STEP: Coding problem ${view.number} of ${view.total}: "${view.title}" (${view.difficulty}). The code editor just opened on their screen with the full statement and examples.`,
-            view.firstProblem ? "Tell them the editor is open and they can pick a language at the top." : "Tell them the editor is open with the next problem.",
-            `Introduce it in your own words in at most four sentences: ${view.statement}`,
-            "Don't read constraints or examples. Ask them to talk through their approach before or while coding, then stop. Do not give hints or any part of the solution.",
+            `CURRENT STEP: Coding problem ${view.number} of ${view.total}: "${view.title}" (${view.difficulty}). The code editor opens on their screen with the full statement and examples the moment you finish speaking.`,
+            "Do this in order, in at most four short sentences:",
+            "1. One short sentence that moves on from what you were just discussing to a coding problem.",
+            `2. Describe the problem in your own words, just the idea, in one or two sentences: ${view.statement}`,
+            view.firstProblem
+                ? "3. Say the full problem and examples are about to appear in the editor, where they can pick a language, and ask them to talk through their approach before or while coding."
+                : "3. Say the full problem is about to appear in the editor, and ask them to talk through their approach before or while coding.",
+            "Don't read constraints or examples. Do not give hints or any part of the solution. Then stop.",
             view.time,
             "No marker.",
         ),
@@ -167,10 +175,10 @@ export const directives = {
 
     designAsk: (view: { title: string; prompt: string; lookFor: string[]; firstInRound: boolean; time: string }) =>
         lines(
-            `CURRENT STEP: System design: "${view.title}". A notes pad just opened on their screen (optional).`,
+            `CURRENT STEP: System design: "${view.title}". An optional notes pad opens on their screen when you finish speaking.`,
             view.firstInRound && "This starts the design part: say one short sentence to introduce it.",
             `Pose it in your own words: ${view.prompt}`,
-            "Ask them to start by clarifying requirements and stating assumptions, and to think aloud. Then stop.",
+            "Ask them to start by clarifying requirements and stating assumptions, and to think aloud. Mention that a notes pad is opening if they want to jot things down. Then stop.",
             `A strong answer covers:\n${bullets(view.lookFor)}`,
             view.time,
             "No marker.",

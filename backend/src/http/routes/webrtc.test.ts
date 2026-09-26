@@ -24,7 +24,7 @@ const factory: VoiceFactory = async (_offer, _params, handlers: VoiceHandlers) =
     opened++;
     const voice = {
         isClosed: false, queuedMs: 0, candidateSpeaking: false,
-        async beginSpeech() {}, speak() {}, endSpeech() {}, stopSpeech() {}, onFirstAudio() {}, playedFraction: () => 0,
+        async beginSpeech() {}, speak() {}, endSpeech() {}, stopSpeech() {}, onFirstAudio() {}, onPlaybackStart: () => () => undefined, playedFraction: () => 0,
         async drained() {}, send: () => true,
         close() { if (!voice.isClosed) { voice.isClosed = true; handlers.onClosed("closed"); } },
     };

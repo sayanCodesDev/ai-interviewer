@@ -169,6 +169,7 @@ class TextVoice implements VoiceLike {
     endSpeech() {}
     stopSpeech() {}
     onFirstAudio(l: () => void) { l(); }
+    onPlaybackStart(l: () => void) { l(); return () => undefined; }
     playedFraction() { return 1; }
     async drained() {}
     send(e: object) { this.events.push(e); return true; }

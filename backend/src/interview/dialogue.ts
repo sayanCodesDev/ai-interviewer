@@ -11,6 +11,8 @@ export interface ReplyResult {
     interrupted: boolean;
     /** Milliseconds from asking until the first spoken sentence was ready. */
     firstSentenceMs: number | null;
+    /** For a reply the candidate cut in on: whether they had heard all of it. Set by the caller, which knows what was played. */
+    delivered?: boolean;
 }
 
 export interface ReplyOptions extends CompletionOptions {

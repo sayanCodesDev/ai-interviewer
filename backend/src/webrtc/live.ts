@@ -3,7 +3,7 @@ import { config } from "../config/env";
 import { logger } from "../observability/logger";
 import { clientConcealedPercent, clientLossPercent, codeRuns, firstAudioMs, firstSentenceMs, interviewsFinished, llmErrors, weakConnectionWindows } from "../observability/metrics";
 import { getLlm, models, RateLimitedError } from "../llm/client";
-import { Conductor, type Turn } from "../interview/conductor";
+import { Conductor, type Outcome, type Turn } from "../interview/conductor";
 import { streamReply, type ReplyResult } from "../interview/dialogue";
 import { clientMessageSchema, type EndReason, type ServerEvent } from "../interview/events";
 import { maxCallMinutes, type Format, type InterviewPlan } from "../interview/plan";
@@ -12,7 +12,7 @@ import { personaPrompt } from "../interview/prompts";
 import { InterviewRecorder } from "../interview/recorder";
 import { VOICES, finishInterview, markStarted } from "../interview/service";
 import { EchoGuard } from "../voice/echoGuard";
-import { isInterruption } from "../voice/turnTaker";
+import { isBackchannel, isInterruption } from "../voice/turnTaker";
 import { removeLive } from "./registry";
 import { Voice, type VoiceFactory, type VoiceLike } from "./voice";
 
@@ -31,6 +31,16 @@ const CLOSING_AUDIO_GRACE_MS = 900;
 const BARGE_IN_WORDS = 3;
 /** How long the interviewer stays dipped when nothing more is heard. */
 const DUCK_HOLD_MS = 1_200;
+/** After the interviewer says it is moving on, the candidate gets this long to add something before the next question is asked. */
+const TRANSITION_BEAT_MS = 1_000;
+/** If the candidate is still mid-sentence when the pause ends, wait for them, but not forever. */
+const TRANSITION_WAIT_FOR_CANDIDATE_MS = 4_000;
+/** Things that appear as the interviewer starts to speak still appear if no sound is ever played (text mode, speech trouble). */
+const START_EVENTS_FALLBACK_MS = 6_000;
+/** The longest a single spoken turn is waited for. */
+const MAX_PLAYBACK_WAIT_MS = 60_000;
+/** How much of a reply must have been played for the candidate to have heard it. */
+const HEARD_FRACTION = 0.75;
 /** The data channel bypasses the HTTP rate limiters, so it has its own: a candidate can't spam the sandbox or the model. */
 const MAX_MESSAGES_PER_10S = 24;
 const MAX_SUBMISSIONS_PER_PROBLEM = 12;
@@ -54,8 +64,22 @@ export interface LiveInterviewInit {
     voiceFactory?: VoiceFactory;
     /** How long a dropped call is held open. Shortened in tests. */
     reconnectWindowMs?: number;
+    /** The pause the candidate gets after "let's move on" before the next question. Shortened in tests. */
+    transitionBeatMs?: number;
     /** Called after the interview is closed and saved, so the caller can start scoring. */
     onFinished?: (interviewId: string, info: { substantive: boolean; reason: EndReason }) => void;
+}
+
+/** One spoken turn of the interviewer, from the model starting to write it to its last word being played. */
+interface Run {
+    controller: AbortController;
+    /** The candidate cut in (or the call ended) before the last word was played. */
+    interrupted: boolean;
+    /** The whole reply was written. */
+    generated: boolean;
+    /** How much of what was said had been played when it was cut off. */
+    playedFraction: number;
+    done: boolean;
 }
 
 /** The part of a reply the candidate had probably heard when they cut in. */
@@ -87,6 +111,10 @@ export class LiveInterview {
     private chain: Promise<void> = Promise.resolve();
     private abort: AbortController | null = null;
     private replyActive = false;
+    /** The turn being spoken right now: while it is written, and until its last word has been played. */
+    private run: Run | null = null;
+    /** When the candidate last did anything that is more than an acknowledgement: spoke, typed, submitted. */
+    private candidateStirredAt = 0;
     private finalized = false;
     private reconnects = 0;
     /** Whether the interviewer has already said hello. A later connection resumes instead of starting over. */
@@ -181,8 +209,7 @@ export class LiveInterview {
     private onChannelOpen(voice: VoiceLike, resuming: boolean): void {
         if (voice !== this.voice || this.finalized) return;
         // A reconnecting browser has lost the editor; put it back.
-        const restore = this.conductor.currentProblemKey ? this.editorEvents() : [];
-        for (const event of restore) this.send(event);
+        for (const event of this.editorEvents()) this.send(event);
 
         this.abortReply();
         const opening = resuming ? this.conductor.onReconnect() : this.conductor.begin();
@@ -190,18 +217,10 @@ export class LiveInterview {
         this.enqueue(() => this.perform(opening));
     }
 
-    /** The events that show the current coding problem, for a browser that just (re)connected. */
+    /** The events that show the current coding problem or notes pad, for a browser that just (re)connected. */
     private editorEvents(): ServerEvent[] {
-        const key = this.conductor.currentProblemKey;
-        const def = key ? getProblemDef(key) : undefined;
-        if (!def) return [];
-        const problems = this.init.plan.rounds.flatMap((r) => r.items).filter((i) => i.kind === "coding");
-        const number = problems.findIndex((i) => i.kind === "coding" && i.problemKey === key) + 1;
-        return [{
-            type: "SHOW_CODE_EDITOR", mode: "code", problemNumber: number, problemTotal: problems.length,
-            problem: publicView(def),
-            title: def.title, question: def.statement, language: "javascript",
-        }];
+        const event = this.conductor.editorEvent();
+        return event ? [event] : [];
     }
 
     // ------------------------------------------------------------------------------ candidate input
@@ -212,6 +231,7 @@ export class LiveInterview {
         if (config.voiceEchoGuard && this.echo.isEcho(text, 2)) return;
 
         this.clearSilenceTimers();
+        if (!isBackchannel(text)) this.candidateStirredAt = Date.now();
         // Cut the interviewer off only for real speech, not "mm-hmm" or a stray sound. And not on the first word or two:
         // that is exactly what a stray noise or a trace of echo looks like. Until it is clear the candidate really is
         // talking (a few words, or a finished utterance) the interviewer only dips their voice, which recovers by itself.
@@ -237,10 +257,15 @@ export class LiveInterview {
     }
 
     private onCandidateTurn(text: string): void {
-        // Let the goodbye finish: the interview is over either way, and the candidate should hear what happens next.
-        if (!this.conductor.isClosing) this.abortReply();
         this.send({ type: "CAPTION", id: this.candidateCaptionId, role: "candidate", text, final: true });
         this.candidateCaptionId = `c${++this.captionSeq}`;
+        // "Okay", "right", "mm-hmm" after something that was not a question is the candidate listening, not answering:
+        // a person carries on rather than reacting to it. It does not interrupt, and it does not call off a move on.
+        if (isBackchannel(text) && !this.conductor.lastInterviewerAskedQuestion) return;
+
+        this.candidateStirredAt = Date.now();
+        // Let the goodbye finish: the interview is over either way, and the candidate should hear what happens next.
+        if (!this.conductor.isClosing) this.abortReply();
         this.enqueue(async () => {
             await this.perform(this.conductor.onCandidate(text));
         });
@@ -275,10 +300,12 @@ export class LiveInterview {
                 this.onCandidateTurn(message.text);
                 break;
             case "SUBMIT_CODE":
+                this.candidateStirredAt = Date.now();
                 this.abortReply();
                 this.enqueue(() => this.handleSubmission(message.problemKey, message.language, message.code));
                 break;
             case "SUBMIT_NOTES":
+                this.candidateStirredAt = Date.now();
                 this.abortReply();
                 this.enqueue(async () => {
                     await this.perform(this.conductor.onNotes(message.text));
@@ -374,17 +401,40 @@ export class LiveInterview {
         this.voice?.duck?.(false);
     }
 
+    /** Stops the interviewer mid-sentence: what is still being written, and what is still being played. */
     private abortReply(): void {
         this.undip();
+        const run = this.run;
+        if (run && !run.done && !run.interrupted) {
+            // Taken before the audio is cleared: afterwards nothing is left to measure.
+            run.playedFraction = this.voice?.playedFraction() ?? 0;
+            run.interrupted = true;
+        }
         if (this.replyActive) this.abort?.abort();
-        if ((this.voice?.queuedMs ?? 0) > 0 || this.replyActive) this.voice?.stopSpeech();
+        if ((this.voice?.queuedMs ?? 0) > 0 || this.replyActive || (run && !run.done)) this.voice?.stopSpeech();
     }
 
+    /**
+     * Runs a turn, and the turns that follow it without the candidate speaking. One never starts until the last one has been
+     * heard to the end, and a move to the next question waits out a short pause in case the candidate has more to say.
+     */
     private async perform(first: Turn | null): Promise<void> {
         let turn = first;
         for (let guard = 0; turn && guard < 8 && !this.finalized && this.voice; guard++) {
-            const outcome = await this.speak(turn);
+            let outcome = await this.speak(turn);
+            if (this.finalized) return;
             for (const event of outcome.events) this.send(event);
+
+            if (outcome.transition) {
+                // The interviewer has said it is moving on. Give the candidate a moment to add something first; if they do,
+                // nothing has moved and they are answered where they are.
+                if (!(await this.beforeMovingOn())) {
+                    this.conductor.cancelTransition();
+                    break;
+                }
+                outcome = this.conductor.commitTransition();
+                for (const event of outcome.events) this.send(event);
+            }
             if (outcome.ended) {
                 void this.finalize(outcome.ended);
                 return;
@@ -394,18 +444,50 @@ export class LiveInterview {
         this.watchSilence();
     }
 
-    private async speak(turn: Turn) {
+    /** True once the pause after "let's move on" has passed with the candidate silent and the call still up. */
+    private async beforeMovingOn(): Promise<boolean> {
+        const voice = this.voice;
+        if (!voice) return false;
+        const started = Date.now();
+        const beat = this.init.transitionBeatMs ?? TRANSITION_BEAT_MS;
+        while (Date.now() - started < beat) {
+            if (this.finalized || voice !== this.voice || voice.isClosed) return false;
+            if (this.candidateStirredAt > started) return false;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        // They started to say something as the pause ended: let them finish, then see whether it changes anything.
+        const waitStarted = Date.now();
+        while (voice.candidateSpeaking && Date.now() - waitStarted < TRANSITION_WAIT_FOR_CANDIDATE_MS) {
+            if (this.finalized || voice !== this.voice || voice.isClosed) return false;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        return !this.finalized && voice === this.voice && !voice.isClosed && this.candidateStirredAt <= started && !voice.candidateSpeaking;
+    }
+
+    private async speak(turn: Turn): Promise<Outcome> {
         const voice = this.voice!;
         this.clearSilenceTimers();
-        for (const event of turn.events) this.send(event);
         this.send({ type: "STATE", state: "thinking" });
 
         const controller = new AbortController();
+        const run: Run = { controller, interrupted: false, generated: false, playedFraction: 0, done: false };
         this.abort = controller;
+        this.run = run;
         this.replyActive = true;
         const startedAt = Date.now();
         const captionId = `i${++this.captionSeq}`;
         const sentences: string[] = [];
+
+        // Things that belong to the start of this turn (the next part begins) are shown as the interviewer starts to say it.
+        let startEventsSent = false;
+        const sendStartEvents = () => {
+            if (startEventsSent || run.done || run.interrupted) return;
+            startEventsSent = true;
+            for (const event of turn.events) this.send(event);
+        };
+        const cancelPlaybackWatch = voice.onPlaybackStart(sendStartEvents);
+        const fallback = setTimeout(sendStartEvents, START_EVENTS_FALLBACK_MS);
+        fallback.unref();
 
         await voice.beginSpeech();
         voice.onFirstAudio(() => firstAudioMs.observe(Date.now() - startedAt));
@@ -431,6 +513,7 @@ export class LiveInterview {
                 },
             });
             if (result.firstSentenceMs !== null) firstSentenceMs.observe(result.firstSentenceMs);
+            run.generated = !result.interrupted;
         } catch (error) {
             llmErrors.inc({ stage: "dialogue" });
             logger.error({ err: error, interviewId: this.id, kind: turn.kind }, "The interviewer's model call failed");
@@ -448,11 +531,30 @@ export class LiveInterview {
         voice.endSpeech();
         this.replyActive = false;
 
-        if (result.interrupted && sentences.length > 0 && result.text !== sentences[sentences.length - 1]) {
-            result = { ...result, text: approximateSpoken(sentences, voice.playedFraction()) };
+        // The turn is over when its last word has been heard, not when the model finished writing it. Everything the
+        // conductor does next (moving on, closing a question) depends on what the candidate actually heard.
+        if (!run.interrupted) await voice.drained(MAX_PLAYBACK_WAIT_MS);
+        cancelPlaybackWatch();
+        clearTimeout(fallback);
+
+        const cutIn = run.interrupted;
+        if (cutIn && sentences.length > 0) {
+            result = { ...result, interrupted: true, text: approximateSpoken(sentences, run.playedFraction), delivered: run.generated && run.playedFraction >= HEARD_FRACTION };
+        } else if (cutIn) {
+            result = { ...result, interrupted: true, text: "", delivered: false };
         }
+        run.done = true;
+        if (this.run === run) this.run = null;
+
         this.send({ type: "CAPTION", id: captionId, role: "interviewer", text: result.text || sentences.join(" "), final: true });
-        return this.conductor.finishTurn(turn, result);
+        const outcome = this.conductor.finishTurn(turn, result);
+        // If the candidate talked over a new question before hearing it, the interview went back to the previous one and the
+        // new part must not be shown. Otherwise whatever was waiting for this turn to be said is shown now.
+        if (!outcome.rolledBack && !this.finalized) {
+            if (!startEventsSent) for (const event of turn.events) this.send(event);
+            for (const event of turn.eventsAfter) this.send(event);
+        }
+        return outcome;
     }
 
     // ---------------------------------------------------------------------------------- silence
