@@ -2,8 +2,9 @@ import type { ChatMessage } from "../llm/client";
 import type { ReplyResult } from "./dialogue";
 import type { EndReason, ServerEvent } from "./events";
 import type { CodingItem, DesignItem, InterviewPlan, PlanRound, TalkItem } from "./plan";
-import { getProblemDef, publicView, redactHidden, type ProblemDef, type TestRun } from "./problems";
+import { chooseNextProblem, getProblemDef, judgeOutcome, publicView, redactHidden, type ProblemDef, type ProblemOutcome, type TestRun } from "./problems";
 import { directives, roundNotesBlock, timeLine, type TalkView } from "./prompts";
+import { relevanceNote } from "./signals";
 import { sanitizeUntrusted } from "./untrusted";
 
 export type TurnKind =
@@ -68,6 +69,8 @@ export interface ConductorOptions {
     onUtterance?: (utterance: Utterance) => void;
     /** A round finished; the transcript is handed over so notes can be written in the background. */
     onRoundComplete?: (round: PlanRound, transcript: Utterance[]) => void;
+    /** The next coding problem was chosen (or changed from the one planned) to suit how the last one went. */
+    onProblemChosen?: (itemId: string, problemKey: string) => void;
 }
 
 type Step =
@@ -137,6 +140,9 @@ export class Conductor {
     private pendingMove: (() => Outcome) | null = null;
     /** Set when a move is made: where things stood before it, until the first thing said after it has been heard. */
     private lastMove: Snapshot | null = null;
+    /** How each coding problem went, once that was known: what the next problem is chosen from. */
+    private readonly problemResults = new Map<string, ProblemOutcome>();
+    private lastProblemResult: { key: string; outcome: ProblemOutcome } | null = null;
     private closing = false;
     private lastCandidateWords = 0;
 
@@ -279,7 +285,7 @@ export class Conductor {
             const def = getProblemDef(item.problemKey);
             if (!def) return null;
             const number = this.problemNumber(item.id);
-            return { type: "SHOW_CODE_EDITOR", mode: "code", problemNumber: number, problemTotal: this.totalProblems, problem: publicView(def), title: def.title, question: def.statement, language: "javascript" };
+            return { type: "SHOW_CODE_EDITOR", mode: "code", problemNumber: number, problemTotal: this.totalProblems, problem: publicView(def), title: def.title, question: def.statement, language: this.plan.selection?.languages[0] ?? "javascript" };
         }
         if (this.step.t === "design" && item.kind === "design") {
             return { type: "SHOW_CODE_EDITOR", mode: "notes", problemNumber: 1, problemTotal: 1, title: item.title, question: item.prompt, language: "markdown" };
@@ -404,6 +410,7 @@ export class Conductor {
         const passed = sub.run.status === "PASSED" && sub.run.passed === sub.run.total;
         const outcome = passed ? "passed" : step.attempt >= this.plan.maxCodingAttempts ? "exhausted" : "retry";
         step.pendingOutcome = outcome;
+        if (outcome !== "retry") this.recordProblemResult(step, passed, false);
 
         const def = this.problem();
         this.recordSystem(`Candidate submitted ${sub.language} code for "${def.title}" (attempt ${step.attempt}): ${summariseRun(sub.run)}`);
@@ -551,6 +558,7 @@ export class Conductor {
                 if (markers.includes("MOVE_ON")) {
                     const def = this.problem();
                     this.recordSystem(`Candidate chose to move on from "${def.title}" without a passing solution`);
+                    this.recordProblemResult(step, false, true);
                     return { next: this.turn("explain", directives.explain({ title: def.title, approach: def.solution.approach, time: this.time }), [], [], 260), events: [] };
                 }
                 return none;
@@ -617,6 +625,8 @@ export class Conductor {
     /** Moves to the next item (or round). The editor, if it was open, is closed as the next thing starts to be said. */
     private advance(justAcknowledged: boolean): Outcome {
         const hideEditor: ServerEvent[] = this.step.t === "coding" || this.step.t === "design" ? [{ type: "HIDE_CODE_EDITOR" }] : [];
+        // Leaving a problem for any reason (time, silence) counts as not finishing it if nothing else was recorded.
+        if (this.step.t === "coding") this.recordProblemResult(this.step, false, true);
 
         this.itemIdx += 1;
         let roundChanged = false;
@@ -662,13 +672,14 @@ export class Conductor {
         if (roundChanged) this.recordSystem(`Part ${this.roundIdx + 1} of ${this.plan.rounds.length}: ${round.title}`);
 
         if (item.kind === "coding") {
+            this.adaptProblem(item);
             const def = getProblemDef(item.problemKey)!;
             this.step = { t: "coding", phase: "present", attempt: 0, hints: 0, pendingOutcome: null, followUps: [], followUpIndex: -1, probes: 0, words: 0 };
             const number = this.problemNumber(item.id);
             this.recordSystem(`Coding problem ${number} of ${this.totalProblems}: "${def.title}"`);
             // The editor opens once the problem has been introduced aloud, not before the interviewer has said a word about it.
             const editor = this.editorEvent();
-            return this.turn("present", directives.presentProblem({ number, total: this.totalProblems, title: def.title, difficulty: def.difficulty, statement: def.statement, firstProblem: number === 1, time: this.time }), events, [], 260, editor ? [editor] : []);
+            return this.turn("present", directives.presentProblem({ number, total: this.totalProblems, title: def.title, difficulty: def.difficulty, statement: def.statement, firstProblem: number === 1, why: item.why, time: this.time }), events, [], 260, editor ? [editor] : []);
         }
 
         if (item.kind === "design") {
@@ -682,6 +693,41 @@ export class Conductor {
 
         this.step = { t: "talk", probes: 0, words: 0 };
         return this.turn("ask", directives.ask(this.talkView(item, 0, first), justAcknowledged), events);
+    }
+
+    /** Notes how the current coding problem went, once, so the next one can be chosen to suit. */
+    private recordProblemResult(step: Extract<Step, { t: "coding" }>, passed: boolean, movedOn: boolean): void {
+        const item = this.item;
+        if (item.kind !== "coding" || this.problemResults.has(item.problemKey)) return;
+        const outcome = judgeOutcome({ passed, attempts: step.attempt, hints: step.hints, movedOn });
+        this.problemResults.set(item.problemKey, outcome);
+        this.lastProblemResult = { key: item.problemKey, outcome };
+        this.recordSystem(`Result on "${getProblemDef(item.problemKey)?.title ?? item.problemKey}": ${outcome.replace(/_/g, " ")}`);
+    }
+
+    /**
+     * After the first coding problem the next one is chosen for the person in front of the interviewer: harder after a clean
+     * solve, the same after one that needed help, easier after one they could not finish. The topics still follow the job.
+     */
+    private adaptProblem(item: CodingItem): void {
+        const last = this.lastProblemResult;
+        const selection = this.plan.selection;
+        const previous = last ? getProblemDef(last.key) : undefined;
+        if (!last || !previous || !selection) return;
+
+        const codingItems = this.plan.rounds.flatMap((r) => r.items).filter((i): i is CodingItem => i.kind === "coding");
+        const at = codingItems.findIndex((i) => i.id === item.id);
+        // Not a problem already given, and not one planned for a later slot either: that slot chooses for itself when it comes.
+        const exclude = codingItems.filter((i) => i.id !== item.id).map((i) => i.problemKey);
+        const next = chooseNextProblem({ level: this.plan.level, previous, outcome: last.outcome, tagWeights: selection.tags, exclude, seed: `${selection.seed}:${item.id}` });
+        if (!next || at < 0) return;
+
+        if (next.key !== item.problemKey) {
+            item.problemKey = next.key;
+            item.why = relevanceNote(next.tags, { tags: selection.tags, themes: selection.themes, languages: [] }) || undefined;
+            this.options.onProblemChosen?.(item.id, next.key);
+        }
+        this.lastProblemResult = null;
     }
 
     private beginClosing(prompt: string, events: ServerEvent[] = []): Turn {

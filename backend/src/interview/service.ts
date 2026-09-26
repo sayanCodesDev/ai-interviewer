@@ -5,7 +5,7 @@ import { config } from "../config/env";
 import { HttpError } from "../http/errors";
 import { logger } from "../observability/logger";
 import { analyseCandidate } from "./jdAnalysis";
-import { fetchGithubProfile, parseGithubInput } from "./github";
+import { fetchGithubProfile, parseGithubInput, verifyGithubUser } from "./github";
 import { FORMATS, FORMAT_PRESETS, LEVELS, type Format, type InterviewPlan } from "./plan";
 import { buildPlan } from "./planBuilder";
 import { warmExpected, type Level } from "./problems";
@@ -32,12 +32,24 @@ export const ACCENTS = [
     { id: "en-AU", label: "English (Australia)" },
 ] as const;
 
+/** A job description shorter than this cannot say what the role needs, so the questions could not follow it. */
+export const MIN_JOB_DESCRIPTION_CHARS = 60;
+
 export const createInterviewSchema = z.object({
     role: z.enum(SUPPORTED_ROLES as [string, ...string[]], { error: "Choose one of the listed roles." }),
     level: z.enum(LEVELS, { error: "Choose your level." }).default("mid"),
     format: z.enum(FORMATS, { error: "Choose an interview format." }).default("standard"),
-    jobDescription: z.string().trim().max(6_000, "The job description is limited to 6,000 characters.").optional(),
-    githubUrl: z.string().trim().max(200).optional(),
+    // Both are required: the interview is built from the job description and the candidate's own projects, like a real loop.
+    jobDescription: z
+        .string({ error: "Paste the job description: the interview is built from it." })
+        .trim()
+        .min(MIN_JOB_DESCRIPTION_CHARS, `That is too short to be a job description. Paste the whole thing (at least ${MIN_JOB_DESCRIPTION_CHARS} characters) so the questions fit the role.`)
+        .max(6_000, "The job description is limited to 6,000 characters."),
+    githubUrl: z
+        .string({ error: "Add your GitHub profile: the interviewer asks about your real projects." })
+        .trim()
+        .min(1, "Add your GitHub profile link or username.")
+        .max(200),
     voice: z.enum(VOICES.map((v) => v.id) as [string, ...string[]]).default(VOICES[0].id),
     accent: z.enum(ACCENTS.map((a) => a.id) as [string, ...string[]]).default("en"),
 });
@@ -56,11 +68,11 @@ export async function createInterview(userId: string, input: CreateInterviewInpu
         }
     }
 
-    let githubUsername: string | undefined;
-    if (input.githubUrl) {
-        const parsed = parseGithubInput(input.githubUrl);
-        if (!parsed) throw new HttpError(400, "That doesn't look like a GitHub username or profile link.", "invalid_github", { githubUrl: "Use a link like https://github.com/your-username." });
-        githubUsername = parsed;
+    const githubUsername = parseGithubInput(input.githubUrl);
+    if (!githubUsername) throw new HttpError(400, "That doesn't look like a GitHub username or profile link.", "invalid_github", { githubUrl: "Use a link like https://github.com/your-username." });
+    // A typo here would quietly cost the candidate the questions about their own projects. If GitHub can't be asked, don't block them.
+    if ((await verifyGithubUser(githubUsername)) === "missing") {
+        throw new HttpError(400, `We couldn't find a GitHub account called ${githubUsername}.`, "github_not_found", { githubUrl: `There is no GitHub account called ${githubUsername}. Check the spelling.` });
     }
 
     const preset = FORMAT_PRESETS[input.format];
@@ -71,9 +83,9 @@ export async function createInterview(userId: string, input: CreateInterviewInpu
             level: input.level,
             format: input.format,
             durationMinutes: preset.minutes,
-            jobDescription: input.jobDescription ? sanitizeUntrusted(input.jobDescription, 6_000) : null,
+            jobDescription: sanitizeUntrusted(input.jobDescription, 6_000),
             resumeText: resumeText ?? null,
-            githubUsername: githubUsername ?? null,
+            githubUsername,
             voice: input.voice,
             accent: input.accent,
         },

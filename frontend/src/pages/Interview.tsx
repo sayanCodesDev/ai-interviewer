@@ -41,9 +41,10 @@ interface EditorState {
     prompt: string;
     number: number;
     total: number;
+    language: string;
 }
 
-const CLOSED_EDITOR: EditorState = { open: false, visible: true, mode: "code", title: "", prompt: "", number: 0, total: 0 };
+const CLOSED_EDITOR: EditorState = { open: false, visible: true, mode: "code", title: "", prompt: "", number: 0, total: 0, language: "javascript" };
 
 export function Interview() {
     usePageTitle("Interview");
@@ -82,7 +83,7 @@ export function Interview() {
                 setRound({ index: event.index, total: event.total, title: event.title });
                 break;
             case "SHOW_CODE_EDITOR":
-                setEditor({ open: true, visible: true, mode: event.mode, problem: event.problem, title: event.title, prompt: event.question, number: event.problemNumber, total: event.problemTotal });
+                setEditor({ open: true, visible: true, mode: event.mode, problem: event.problem, title: event.title, prompt: event.question, number: event.problemNumber, total: event.problemTotal, language: event.language });
                 setSubmitting(false);
                 break;
             case "HIDE_CODE_EDITOR":
@@ -186,6 +187,7 @@ export function Interview() {
             onSubmitCode={handleSubmitCode}
             onSubmitNotes={handleSubmitNotes}
             onClose={toggleEditor}
+            preferredLanguage={editor.language}
         />
     );
 

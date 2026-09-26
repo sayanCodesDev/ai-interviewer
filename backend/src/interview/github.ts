@@ -37,6 +37,38 @@ export interface GithubProfile {
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const cache = new Map<string, { at: number; value: GithubProfile | null }>();
+const verified = new Map<string, number>();
+
+let doFetch: typeof fetch = (...args) => fetch(...args);
+
+/** Tests replace the network with a fake, so no test ever reaches GitHub. Pass null to restore it. */
+export function setGithubFetchForTesting(replacement: typeof fetch | null): void {
+    doFetch = replacement ?? ((...args) => fetch(...args));
+    cache.clear();
+    verified.clear();
+}
+
+export type GithubCheck = "found" | "missing" | "unknown";
+
+/**
+ * Whether a GitHub account with this name exists. "unknown" means GitHub could not be asked (rate limit, outage): the
+ * caller must not turn that into "no such user", or a candidate could not start an interview while GitHub is down.
+ */
+export async function verifyGithubUser(username: string): Promise<GithubCheck> {
+    if (!GITHUB_USERNAME.test(username)) return "missing";
+    const seen = verified.get(username.toLowerCase());
+    if (seen && Date.now() - seen < 10 * 60 * 1000) return "found";
+    try {
+        const response = await doFetch(`https://api.github.com/users/${username}`, { headers: headers(), signal: AbortSignal.timeout(6_000) });
+        if (response.status === 404) return "missing";
+        if (!response.ok) return "unknown";
+        verified.set(username.toLowerCase(), Date.now());
+        return "found";
+    } catch (error) {
+        logger.warn({ err: error, username }, "Could not check the GitHub account");
+        return "unknown";
+    }
+}
 
 function headers(accept = "application/vnd.github+json"): Record<string, string> {
     return {
@@ -48,7 +80,7 @@ function headers(accept = "application/vnd.github+json"): Record<string, string>
 }
 
 async function getJson(url: string): Promise<unknown | null> {
-    const response = await fetch(url, { headers: headers(), signal: AbortSignal.timeout(8_000) });
+    const response = await doFetch(url, { headers: headers(), signal: AbortSignal.timeout(8_000) });
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
     return response.json();
@@ -56,7 +88,7 @@ async function getJson(url: string): Promise<unknown | null> {
 
 async function getReadme(username: string, repo: string): Promise<string | undefined> {
     try {
-        const response = await fetch(`https://api.github.com/repos/${username}/${encodeURIComponent(repo)}/readme`, {
+        const response = await doFetch(`https://api.github.com/repos/${username}/${encodeURIComponent(repo)}/readme`, {
             headers: headers("application/vnd.github.raw+json"),
             signal: AbortSignal.timeout(6_000),
         });
