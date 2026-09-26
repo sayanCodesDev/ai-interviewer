@@ -176,7 +176,7 @@ describe("LiveInterview: interruptions", () => {
         await ctx.live.idle();
 
         await ctx.live.finalize("candidate_ended");
-        const turns = await prisma.interviewTurn.findMany({ where: { interviewId: ctx.created.id }, orderBy: { seq: "asc" } });
+        const turns = (await prisma.interviewTurn.findMany({ where: { interviewId: ctx.created.id }, orderBy: { seq: "asc" } })).filter((t) => t.role !== "SYSTEM");
         assert.equal(turns[0]!.role, "INTERVIEWER");
         assert.equal(turns[0]!.interrupted, true);
         assert.ok(!turns[0]!.text.includes("introduce yourself"), "words never spoken are not in the transcript");
@@ -286,6 +286,32 @@ describe("LiveInterview: hostile and broken input", () => {
     });
 });
 
+describe("LiveInterview: flooding", () => {
+    test("a flood of data-channel messages is cut off with a warning, and the interview carries on", async () => {
+        const { connect, live } = await setup();
+        const voice = await connect();
+        for (let i = 0; i < 60; i++) voice.handlers.onClientMessage(JSON.stringify({ type: "PING" }));
+        assert.ok(voice.of("NOTICE").some((n) => n.level === "warning" && /too quickly/.test(n.message)));
+        void live;
+    });
+
+    test("submissions are spaced out, so the sandbox cannot be hammered from the call", async () => {
+        const ctx = await setup("quick");
+        const voice = await ctx.connect();
+        for (let i = 0; i < 8 && voice.of("SHOW_CODE_EDITOR").length === 0; i++) await ctx.say(voice, ANSWER);
+        const key = voice.of("SHOW_CODE_EDITOR")[0].problem.key as string;
+        const submit = () => voice.handlers.onClientMessage(JSON.stringify({ type: "SUBMIT_CODE", problemKey: key, language: "javascript", code: JS_SOLUTIONS[key] }));
+
+        submit();
+        await ctx.live.idle();
+        submit();
+        submit();
+        await ctx.live.idle();
+        assert.equal(voice.of("SUBMISSION_RESULT").length, 1, "only the first was graded");
+        assert.ok(voice.of("NOTICE").some((n) => /moment/.test(n.message)));
+    });
+});
+
 describe("LiveInterview: reconnecting and finishing", () => {
     test("a dropped call is held open, and a reconnect resumes with a welcome back", async () => {
         const { live, connect, voices, created } = await setup("quick", { reconnectWindowMs: 5_000 });
@@ -328,7 +354,8 @@ describe("LiveInterview: reconnecting and finishing", () => {
         const turns = await prisma.interviewTurn.findMany({ where: { interviewId: created.id }, orderBy: { seq: "asc" } });
         assert.ok(turns.length >= 6);
         assert.deepEqual(turns.map((t) => t.seq), turns.map((_, i) => i), "sequence numbers are contiguous");
-        assert.equal(turns[0]!.role, "INTERVIEWER");
+        assert.equal(turns[0]!.role, "SYSTEM", "the transcript opens with the first part's heading");
+        assert.equal(turns[1]!.role, "INTERVIEWER");
         assert.ok(turns.some((t) => t.role === "CANDIDATE" && t.text.includes("payment services")));
         assert.ok(turns.every((t) => t.offsetMs >= 0));
         const row = await prisma.interview.findUniqueOrThrow({ where: { id: created.id } });

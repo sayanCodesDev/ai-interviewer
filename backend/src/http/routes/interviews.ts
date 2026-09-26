@@ -7,6 +7,8 @@ import { ACCENTS, VOICES, createInterview, createInterviewSchema, deleteIntervie
 import { FORMAT_PRESETS } from "../../interview/plan";
 import { getProblemDef, runCustom, runExamples, validateArgs } from "../../interview/problems";
 import { InterviewRecorder } from "../../interview/recorder";
+import { pokeReportWorker } from "../../scoring/worker";
+import { prisma } from "../../../lib/prisma";
 import { ResumeError, MAX_RESUME_BYTES, extractResumeText } from "../../interview/resume";
 import { SUPPORTED_ROLES } from "../../interview/roleBanks";
 import { HttpError, parseInput } from "../errors";
@@ -142,6 +144,47 @@ export function interviewsRouter(limits: RateLimits): Router {
         await recorder.close();
 
         res.json({ run });
+    });
+
+    /**
+     * The report page's data: the transcript is available as soon as the interview ends, and the
+     * scored report follows once it has been generated (the page polls while status is PENDING or GENERATING).
+     */
+    router.get("/interviews/:id/report", requireAuth, limits.reads, async (req, res) => {
+        const id = parseInput(idSchema, req.params.id);
+        const row = await getOwnedInterview(currentUser(req).id, id);
+        if (row.status === "CREATED" || row.status === "IN_PROGRESS") throw new HttpError(409, "This interview hasn't finished yet.", "not_finished");
+
+        const [turns, submissions, report] = await Promise.all([
+            prisma.interviewTurn.findMany({ where: { interviewId: id }, orderBy: { seq: "asc" } }),
+            prisma.codeSubmission.findMany({ where: { interviewId: id, kind: "SUBMIT" }, orderBy: { createdAt: "asc" } }),
+            prisma.report.findUnique({ where: { interviewId: id } }),
+        ]);
+        const plan = readPlan(row);
+
+        res.json({
+            interview: {
+                id: row.id, role: row.targetRole, level: row.level, format: row.format, status: row.status,
+                startedAt: row.startedAt, endedAt: row.endedAt, endReason: row.endReason,
+                rounds: plan?.rounds.map((r) => ({ key: r.key, title: r.title, type: r.type })) ?? [],
+            },
+            status: row.reportStatus,
+            error: row.reportStatus === "FAILED" ? "We couldn't generate this report. You can try again." : null,
+            report: report?.data ?? null,
+            createdAt: report?.createdAt ?? null,
+            transcript: turns.map((t) => ({ seq: t.seq, role: t.role.toLowerCase(), roundKey: t.roundKey, text: t.text, offsetMs: t.offsetMs, interrupted: t.interrupted })),
+            submissions: submissions.map((s) => ({ problemKey: s.problemKey, attempt: s.attempt, language: s.language, code: s.code, passed: s.passed, total: s.total, status: s.status, at: s.createdAt })),
+        });
+    });
+
+    /** Try again after a failed generation. Only allowed when it actually failed. */
+    router.post("/interviews/:id/report/retry", requireAuth, limits.createInterview, async (req, res) => {
+        const id = parseInput(idSchema, req.params.id);
+        const row = await getOwnedInterview(currentUser(req).id, id);
+        if (row.reportStatus !== "FAILED") throw new HttpError(409, "There's nothing to retry.", "not_failed");
+        await prisma.interview.update({ where: { id }, data: { reportStatus: "PENDING", reportAttempts: 0, reportError: null } });
+        pokeReportWorker();
+        res.json({ status: "PENDING" });
     });
 
     return router;

@@ -20,6 +20,17 @@ export function sanitizeUntrusted(text: string, maxLength: number): string {
         .slice(0, maxLength);
 }
 
+/**
+ * For code, where indentation matters: strips only what could break out of a prompt, and keeps every space and newline.
+ */
+export function neutraliseDelimiters(text: string, maxLength: number): string {
+    return text
+        .replace(CONTROL_CHARS, " ")
+        .replace(/<\/?\s*untrusted[^>]*>/gi, " ")
+        .replace(/\[\[[^\]]{0,40}\]\]/g, " ")
+        .slice(0, maxLength);
+}
+
 /** Wraps untrusted text so the model can tell it from instructions. */
 export function untrustedBlock(label: string, text: string): string {
     return `<untrusted label="${label}">\n${text}\n</untrusted>`;

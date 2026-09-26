@@ -24,7 +24,8 @@ export interface Turn {
 }
 
 export interface Utterance {
-    role: "interviewer" | "candidate";
+    /** "system" entries are facts about the session (round changes, hints, submissions), never shown to the model as speech. */
+    role: "interviewer" | "candidate" | "system";
     text: string;
     roundKey: string;
     at: number;
@@ -72,8 +73,9 @@ type Step =
     | { t: "design"; probes: number; notes: string }
     | { t: "close" };
 
-const MAX_HISTORY_MESSAGES = 30;
-const MAX_HISTORY_CHARS = 16_000;
+// Small on purpose: notes carry the earlier parts, and every token is charged against a per-minute allowance.
+const MAX_HISTORY_MESSAGES = 12;
+const MAX_HISTORY_CHARS = 5_000;
 /** A call may run this long past its planned length before it is closed regardless. */
 const GRACE_MINUTES = 6;
 const BRIEF_ANSWER_WORDS = 6;
@@ -185,6 +187,10 @@ export class Conductor {
         this.options.onUtterance?.(utterance);
     }
 
+    private recordSystem(text: string): void {
+        this.record("system", text);
+    }
+
     setRoundNotes(roundKey: string, text: string): void {
         this.notes.set(roundKey, text);
     }
@@ -198,13 +204,14 @@ export class Conductor {
 
         // The current round in full, plus a little of the one before so a transition has context.
         const currentRound = this.history.filter((u) => u.roundKey === this.round.key);
-        const previous = this.history.filter((u) => u.roundKey !== this.round.key).slice(-4);
+        const previous = this.history.filter((u) => u.roundKey !== this.round.key && u.role !== "system").slice(-2);
         const window = [...previous, ...currentRound];
 
         const messages: ChatMessage[] = [];
         let chars = 0;
-        for (let i = window.length - 1; i >= 0 && messages.length < MAX_HISTORY_MESSAGES; i--) {
-            const u = window[i]!;
+        const spoken = window.filter((u) => u.role !== "system");
+        for (let i = spoken.length - 1; i >= 0 && messages.length < MAX_HISTORY_MESSAGES; i--) {
+            const u = spoken[i]!;
             chars += u.text.length;
             if (chars > MAX_HISTORY_CHARS) break;
             messages.unshift({ role: u.role === "interviewer" ? "assistant" : "user", content: u.role === "candidate" ? sanitizeUntrusted(u.text, 1_500) : u.text });
@@ -220,6 +227,7 @@ export class Conductor {
     begin(): Turn {
         const item = this.item as TalkItem;
         this.step = { t: "talk", probes: 0 };
+        this.recordSystem(`Part 1 of ${this.plan.rounds.length}: ${this.round.title}`);
         return this.turn("opening", directives.opening({ prompt: item.prompt, candidateName: this.options.candidateName, time: this.time }), [this.roundEvent()]);
     }
 
@@ -282,7 +290,7 @@ export class Conductor {
         step.pendingOutcome = outcome;
 
         const def = this.problem();
-        this.record("candidate", `[Submitted ${sub.language} code for "${def.title}": ${summariseRun(sub.run)}]`);
+        this.recordSystem(`Candidate submitted ${sub.language} code for "${def.title}" (attempt ${step.attempt}): ${summariseRun(sub.run)}`);
         return this.turn("review", directives.review({
             title: def.title,
             language: sub.language,
@@ -397,9 +405,13 @@ export class Conductor {
 
             case "coach": {
                 if (step.t !== "coding") return none;
-                if (markers.includes("HINT") && step.hints < HINT_LIMIT) step.hints++;
+                if (markers.includes("HINT") && step.hints < HINT_LIMIT) {
+                    step.hints++;
+                    this.recordSystem(`Hint ${step.hints} of ${HINT_LIMIT} given for "${this.problem().title}"`);
+                }
                 if (markers.includes("MOVE_ON")) {
                     const def = this.problem();
+                    this.recordSystem(`Candidate chose to move on from "${def.title}" without a passing solution`);
                     return { next: this.turn("explain", directives.explain({ title: def.title, approach: def.solution.approach, time: this.time }), [], [], 260), events: [] };
                 }
                 return none;
@@ -513,11 +525,13 @@ export class Conductor {
         const item = this.item;
         const first = this.itemIdx === 0;
         const events: ServerEvent[] = roundChanged ? [this.roundEvent()] : [];
+        if (roundChanged) this.recordSystem(`Part ${this.roundIdx + 1} of ${this.plan.rounds.length}: ${round.title}`);
 
         if (item.kind === "coding") {
             const def = getProblemDef(item.problemKey)!;
             this.step = { t: "coding", phase: "present", attempt: 0, hints: 0, pendingOutcome: null, followUps: [], followUpIndex: -1, probes: 0 };
             const number = this.problemNumber(item.id);
+            this.recordSystem(`Coding problem ${number} of ${this.totalProblems}: "${def.title}"`);
             events.push({
                 type: "SHOW_CODE_EDITOR",
                 mode: "code",

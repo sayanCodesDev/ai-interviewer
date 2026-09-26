@@ -112,6 +112,7 @@ export function buildPlan(input: BuildPlanInput): InterviewPlan {
         jd: input.analysis.jd,
         analysisSource: input.analysis.source,
         keyterms: input.analysis.jd.keyterms.slice(0, 50),
+        brief: input.analysis.brief,
     };
 }
 
