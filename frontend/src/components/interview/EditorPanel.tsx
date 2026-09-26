@@ -56,9 +56,15 @@ interface EditorPanelProps {
     layout?: "split" | "sheet";
     /** The language the candidate works in, as far as their GitHub and resume show. Used unless they have chosen one themselves. */
     preferredLanguage?: string;
+    /** Told what is in the editor after the candidate has paused typing, so the interviewer can see it as a person would. */
+    onCodeSnapshot?: (code: string, language: Language) => void;
 }
 
-export function EditorPanel({ interviewId, mode, problem, title, prompt, problemNumber, problemTotal, submitResult, submitting, onSubmitCode, onSubmitNotes, onClose, layout = "split", preferredLanguage = "javascript" }: EditorPanelProps) {
+/** How long typing must pause before the code is shared, and the least time between two shares. */
+const SNAPSHOT_QUIET_MS = 5_000;
+const SNAPSHOT_MIN_GAP_MS = 15_000;
+
+export function EditorPanel({ interviewId, mode, problem, title, prompt, problemNumber, problemTotal, submitResult, submitting, onSubmitCode, onSubmitNotes, onClose, layout = "split", preferredLanguage = "javascript", onCodeSnapshot }: EditorPanelProps) {
     const notesMode = mode === "notes";
     const [prefs, updatePrefs] = useEditorPrefs();
     const [language, setLanguage] = useState<Language>(() => initialLanguage(preferredLanguage));
@@ -87,6 +93,21 @@ export function EditorPanel({ interviewId, mode, problem, title, prompt, problem
         return () => clearInterval(id);
     }, []);
     const timerTone = elapsed >= 1500 ? "text-night-red" : elapsed >= 900 ? "text-night-amber" : "text-night-muted";
+
+    // Share the code with the interviewer when typing pauses. Unchanged code and the untouched starter are not worth sending.
+    const lastShared = useRef({ code: "", at: 0 });
+    const snapshotCallback = useRef(onCodeSnapshot);
+    snapshotCallback.current = onCodeSnapshot;
+    useEffect(() => {
+        if (notesMode || !problem || !snapshotCallback.current) return;
+        if (code === lastShared.current.code || code === starter(language)) return;
+        const wait = Math.max(SNAPSHOT_QUIET_MS, lastShared.current.at + SNAPSHOT_MIN_GAP_MS - Date.now());
+        const timer = setTimeout(() => {
+            lastShared.current = { code: codeRef.current, at: Date.now() };
+            snapshotCallback.current?.(codeRef.current, language);
+        }, wait);
+        return () => clearTimeout(timer);
+    }, [code, language, notesMode, problem, starter]);
 
     // Keep drafts: they survive a refresh, and each language keeps its own.
     const persist = useCallback((value: string, lang: Language) => {
