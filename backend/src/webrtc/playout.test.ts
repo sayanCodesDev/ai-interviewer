@@ -92,6 +92,21 @@ describe("SpeechPlayout: sizing the buffer to the delivery speed", () => {
 });
 
 describe("SpeechPlayout", () => {
+    test("is active from the moment speech is expected until its last word has been played", () => {
+        const { playout, run } = rig();
+        assert.equal(playout.active, false);
+        playout.expectMore(true);
+        assert.equal(playout.active, true, "text has gone to the synthesiser but no audio has come back yet");
+        playout.enqueue(speech(400));
+        run(60);
+        assert.equal(playout.active, true, "playing");
+        playout.expectMore(false);
+        run(600);
+        assert.equal(playout.active, false, "all played");
+        playout.clear();
+        assert.equal(playout.active, false);
+    });
+
     test("stays quiet until there is a little audio, then plays the reply in order", () => {
         const { playout, run, events } = rig();
         assert.equal(played(run(100)), 0, "nothing queued: silence");
