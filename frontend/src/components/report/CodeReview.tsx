@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 const TONES: Record<Tone, { label: string; icon: typeof Check; line: string; note: string; badge: string }> = {
     praise: { label: "Done well", icon: Check, line: "border-l-signal bg-signal/10", note: "border-l-signal", badge: "text-signal" },
     suggestion: { label: "Suggestion", icon: Lightbulb, line: "border-l-night-muted bg-white/[0.05]", note: "border-l-night-muted", badge: "text-night-foreground" },
-    issue: { label: "Issue", icon: AlertTriangle, line: "border-l-destructive bg-destructive/15", note: "border-l-destructive", badge: "text-destructive" },
+    issue: { label: "Issue", icon: AlertTriangle, line: "border-l-night-red bg-night-red/15", note: "border-l-night-red", badge: "text-night-red" },
 };
 
 /**
@@ -22,7 +22,7 @@ export function CodeReview({ code, notes = [] }: { code: string; notes?: CodeNot
     return (
         <div className="mt-3">
             {summary && <p className="mb-2 text-[13px] text-muted-foreground">{summary}</p>}
-            <div role="group" aria-label="Your code, with review notes under the lines they are about" className="max-h-[40rem] overflow-y-auto rounded-lg border bg-night py-2 font-mono text-[12.5px] leading-relaxed text-night-foreground print:max-h-none print:overflow-visible">
+            <div role="group" tabIndex={0} aria-label="Your code, with review notes under the lines they are about" className="max-h-[40rem] overflow-y-auto rounded-lg border bg-night py-2 font-mono text-[12.5px] leading-relaxed text-night-foreground outline-none focus-visible:ring-4 focus-visible:ring-foreground/20 print:max-h-none print:overflow-visible">
                 {lines.map((line) => (
                     <Fragment key={line.number}>
                         <div id={`code-line-${line.number}`} className={cn("grid grid-cols-[3rem_minmax(0,1fr)] border-l-2 border-transparent", line.tone && TONES[line.tone].line)}>
