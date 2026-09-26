@@ -1,11 +1,27 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/svg+xml" href="./logo.svg" />
-  <title>AI interviewer</title>
+  <title>AI Interviewer: the technical interview that talks back</title>
+  <meta name="description" content="Take a voice-first technical interview with an AI interviewer. Talk through your experience, solve problems in a live code editor, and get spoken feedback." />
+  <meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0e0e0c" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="AI Interviewer" />
+  <meta property="og:description" content="A voice-first technical interview with a live code editor and spoken feedback." />
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <script>
+    // Apply the theme before first paint so there is no flash of the wrong one.
+    (function () {
+      try {
+        var stored = localStorage.getItem("theme");
+        var dark = stored ? stored === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.classList.toggle("dark", dark);
+      } catch (e) {}
+    })();
+  </script>
   <script type="module" src="./frontend.tsx" async></script>
 </head>
 

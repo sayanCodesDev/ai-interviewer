@@ -1,0 +1,45 @@
+import type { Monaco } from "@monaco-editor/react";
+
+export const MONACO_THEME = "interviewer-night";
+
+/** Registers an editor theme built from the app's night palette, so the editor matches the room around it. */
+export function defineInterviewerTheme(monaco: Monaco) {
+    monaco.editor.defineTheme(MONACO_THEME, {
+        base: "vs-dark",
+        inherit: true,
+        rules: [
+            { token: "comment", foreground: "8F8D84", fontStyle: "italic" },
+            { token: "keyword", foreground: "C6F135" },
+            { token: "keyword.control", foreground: "C6F135" },
+            { token: "storage", foreground: "C6F135" },
+            { token: "string", foreground: "E3C78A" },
+            { token: "number", foreground: "F0A36B" },
+            { token: "type", foreground: "B9D7EA" },
+            { token: "type.identifier", foreground: "B9D7EA" },
+            { token: "delimiter", foreground: "9A988F" },
+            { token: "operator", foreground: "9A988F" },
+        ],
+        colors: {
+            "editor.background": "#0B0B0A",
+            "editor.foreground": "#F2F0EA",
+            "editorLineNumber.foreground": "#4A4943",
+            "editorLineNumber.activeForeground": "#9A988F",
+            "editor.lineHighlightBackground": "#12120F",
+            "editor.lineHighlightBorder": "#00000000",
+            "editor.selectionBackground": "#C6F13533",
+            "editor.inactiveSelectionBackground": "#C6F13520",
+            "editorCursor.foreground": "#C6F135",
+            "editorIndentGuide.background1": "#22221D",
+            "editorIndentGuide.activeBackground1": "#3A3A33",
+            "editorWhitespace.foreground": "#2A2A25",
+            "editorWidget.background": "#161613",
+            "editorWidget.border": "#2A2A25",
+            "editorSuggestWidget.background": "#161613",
+            "editorSuggestWidget.border": "#2A2A25",
+            "editorSuggestWidget.selectedBackground": "#23231F",
+            "scrollbarSlider.background": "#2A2A2566",
+            "scrollbarSlider.hoverBackground": "#3A3A3388",
+            "scrollbarSlider.activeBackground": "#4A494388",
+        },
+    });
+}
