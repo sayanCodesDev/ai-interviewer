@@ -1,6 +1,6 @@
 import { ArrowRight, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 import { ScoreTrend } from "@/components/dashboard/ScoreTrend";
@@ -35,7 +35,6 @@ function statusText(item: InterviewListItem): string {
 export function Dashboard() {
     usePageTitle("Your interviews");
     const { user } = useAuth();
-    const navigate = useNavigate();
     const [items, setItems] = useState<InterviewListItem[] | null>(null);
     const [cursor, setCursor] = useState<string | null>(null);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -121,9 +120,8 @@ export function Dashboard() {
                         <ul className="grid gap-3">
                             {items.map((item) => (
                                 <li key={item.id} className="group relative flex items-center gap-4 rounded-xl border bg-card p-5 transition-colors hover:border-foreground/40">
-                                    <button
-                                        type="button"
-                                        onClick={() => navigate(destinationFor(item))}
+                                    <Link
+                                        to={destinationFor(item)}
                                         className="flex min-w-0 flex-1 items-center gap-5 text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-4 focus-visible:after:ring-foreground/10"
                                     >
                                         <div className="w-16 shrink-0 text-center">
@@ -149,7 +147,7 @@ export function Dashboard() {
                                             <p className={cn("text-sm", item.band === "Interview-ready" || item.band === "Close" ? "font-medium" : "text-muted-foreground")}>{item.band ?? statusText(item)}</p>
                                             {item.band && <p className="mt-1 text-[13px] text-muted-foreground">{statusText(item)}</p>}
                                         </div>
-                                    </button>
+                                    </Link>
                                     <Button variant="ghost" size="icon-sm" aria-label={`Delete interview: ${item.role}`} className="relative z-10 text-muted-foreground" onClick={() => setPendingDelete(item)}>
                                         <Trash2 />
                                     </Button>

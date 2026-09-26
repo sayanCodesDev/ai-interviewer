@@ -76,8 +76,8 @@ export const directives = {
             "No marker.",
         ),
 
-    respond: (view: TalkView, candidateIsBrief: boolean) => {
-        const canProbe = view.probesUsed < view.maxProbes;
+    respond: (view: TalkView, candidateIsBrief: boolean, moveOn = false) => {
+        const canProbe = view.probesUsed < view.maxProbes && !moveOn;
         return lines(
             `CURRENT STEP: ${view.roundTitle}, question ${view.number} of ${view.total} (${view.topic}). You asked: "${view.prompt}"`,
             view.lookFor.length > 0 && `A strong answer covers:\n${bullets(view.lookFor)}`,
@@ -85,10 +85,11 @@ export const directives = {
             `Follow-ups used: ${view.probesUsed} of ${view.maxProbes}. The candidate just spoke.`,
             "- If they asked you to repeat or clarify, do so briefly and wait. Do not advance.",
             "- Otherwise react in one specific sentence, correcting anything clearly wrong.",
-            candidateIsBrief && "- Their answer was very short: invite more detail or an example. Do not advance yet.",
-            canProbe
+            candidateIsBrief && !moveOn && "- Their answer was very short: invite more detail or an example. Do not advance yet.",
+            moveOn && "- They have now given several very short answers in a row. Say kindly that it's fine, without pressing, and end your reply with [[ADVANCE]].",
+            !moveOn && (canProbe
                 ? "- Then EITHER ask ONE targeted follow-up about a real gap, OR, if the answer was solid or you have heard enough, end your reply with [[ADVANCE]]."
-                : "- You may not ask any more follow-ups on this question. Acknowledge and end your reply with [[ADVANCE]].",
+                : "- You may not ask any more follow-ups on this question. Acknowledge and end your reply with [[ADVANCE]]."),
             "Never ask two questions. Never say the marker aloud.",
             view.time,
         );

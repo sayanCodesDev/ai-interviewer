@@ -47,6 +47,25 @@ describe("completeJson", () => {
         assert.equal(retry[retry.length - 2]!.role, "assistant");
     });
 
+    test("the correction round is given more room, since an empty reply usually means the model ran out of tokens thinking", async () => {
+        const llm = new FakeLlm().enqueue("", '{"score": 5, "note": "ok"}');
+        setLlmForTesting(llm);
+        await completeJson([{ role: "user", content: "grade" }], schema, { maxTokens: 1_000 });
+        assert.deepEqual(llm.calls.map((c) => c.options.maxTokens), [1_000, 1_700]);
+        setLlmForTesting(null);
+    });
+
+    test("when the provider rejects a malformed generation, the request is repeated without JSON mode", async () => {
+        const llm = new FakeLlm((call) => {
+            if (call.options.json) throw new Error('LLM 400: {"error":{"message":"Failed to generate JSON. Please adjust your prompt.","code":"json_validate_failed"}}');
+            return 'Here you go: {"score": 6, "note": "ok"}';
+        });
+        setLlmForTesting(llm);
+        assert.deepEqual(await completeJson([{ role: "user", content: "grade" }], schema), { score: 6, note: "ok" });
+        assert.deepEqual(llm.calls.map((c) => c.options.json), [true, false]);
+        setLlmForTesting(null);
+    });
+
     test("gives up with a clear error after one correction", async () => {
         const llm = new FakeLlm("not json at all");
         setLlmForTesting(llm);
