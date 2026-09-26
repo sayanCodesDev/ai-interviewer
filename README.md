@@ -147,7 +147,8 @@ Beyond unit and integration tests, the repository contains the tools used to ver
 |---|---|
 | `backend/scripts/simulate-interview.ts` | Whole interviews through the real conductor and scorer. `SIM_SCRIPTED=1` uses scripted candidates at three skill levels and checks that scores order strong > average > weak (measured: 83 / 63 / 23) without spending model tokens on the dialogue. |
 | `backend/scripts/mock-llm.ts` | An offline stand-in for the language model, for trying everything for free. |
-| `backend/scripts/playout-sim.ts` | Replays realistic and bad speech-delivery patterns against the playout buffer and reports first-word delay, stutters and silence, to choose and check its settings. |
+| `backend/scripts/voice-check.ts` | **If the interviewer's voice glitches, run this first** (`cd backend && npx tsx scripts/voice-check.ts`). It records how the speech service really delivers audio to this machine, checks that the computer keeps steady time, replays the recording through the server's smoothing buffer, and says what to change. A few thousandths of a cent per run. |
+| `backend/scripts/playout-sim.ts` | Replays realistic and bad speech-delivery patterns against the playout buffer and reports first-word delay, stutters and silence, to choose and check its settings (`TRACES=file` uses a recording saved by `voice-check.ts` with `SAVE=file`). |
 | `backend/scripts/load-test.ts` | N simultaneous WebRTC interviews; reports latency, CPU and memory. |
 | `backend/scripts/smoke.ts` | The quick check to run after a deploy or a database change: sign up, sign in, refresh, create/read/delete an interview, delete the account, against any server (`BASE_URL=... ALLOW_REMOTE=1`). Leaves nothing behind. |
 | `backend/scripts/security-probe.ts` | Attacks a running server: forged and replayed tokens, other users' data, hostile input, uploads, rate limits (57 checks). Local addresses only. |

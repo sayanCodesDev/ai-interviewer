@@ -4,11 +4,10 @@
 // buffer settings without spending anything on a speech service.
 //
 //   npx tsx scripts/playout-sim.ts
-import { PcmFrameQueue, SAMPLES_PER_FRAME } from "../src/services/audioQueue";
-import { DEFAULT_PLAYOUT, SpeechPlayout, type PlayoutConfig } from "../src/webrtc/playout";
-
-interface Arrival { at: number; audioMs: number; }
-interface Scenario { name: string; arrivals: Arrival[]; /** when the synthesiser says it has finished */ flushedAt: number; totalAudioMs: number; }
+import fs from "node:fs";
+import { estimateSpeechMs, speechText } from "../src/voice/speechText";
+import { DEFAULT_PLAYOUT, type PlayoutConfig } from "../src/webrtc/playout";
+import { simulate, type Arrival, type Scenario } from "./lib/playoutSimulation";
 
 const CHUNK_MS = 40;
 function chunks(count: number, at: (k: number) => number): Arrival[] {
@@ -38,35 +37,40 @@ const scenarios: Scenario[] = [
     { name: "slow for the first second, then fine", arrivals: monotone(chunks(N, (k) => (k < 25 ? 600 + k * 90 : 600 + 25 * 90 + (k - 25) * 12))), flushedAt: 600 + 25 * 90 + 225 * 12 + 30, totalAudioMs: N * CHUNK_MS },
 ];
 
-interface Result { startDelay: number; underruns: number; silenceInside: number; maxGap: number; finished: boolean }
-
-function simulate(scenario: Scenario, config: PlayoutConfig): Result {
-    let now = 0;
-    const gaps: number[] = [];
-    let startDelay = -1;
-    const playout = new SpeechPlayout(new PcmFrameQueue(undefined, 1), config, { onGap: (g) => gaps.push(g) }, () => now);
-    const pending = [...scenario.arrivals];
-    playout.expectMore(true);
-    playout.expectAudio(scenario.totalAudioMs * 1.1); // the caller's guess from the text length: a little off
-    let playedFrames = 0, silentInside = 0, started = false, done = false;
-    const firstAt = scenario.arrivals[0]!.at;
-    for (now = 0; now < 60_000 && !done; now += 20) {
-        while (pending.length && pending[0]!.at <= now) { pending.shift(); playout.enqueue(Buffer.alloc((CHUNK_MS / 20) * SAMPLES_PER_FRAME * 2)); }
-        if (now >= scenario.flushedAt && pending.length === 0) playout.expectMore(false);
-        const frame = playout.next();
-        if (frame) { playedFrames++; if (!started) { started = true; startDelay = now - firstAt; } }
-        else if (started && playedFrames * 20 < scenario.totalAudioMs - 20) silentInside += 20;
-        if (started && playedFrames * 20 >= scenario.totalAudioMs - 20) done = true;
-    }
-    return { startDelay, underruns: gaps.length, silenceInside: silentInside, maxGap: Math.max(0, ...gaps), finished: done };
-}
-
 const policies: Array<[string, PlayoutConfig]> = [
     ["no buffer (the old behaviour)", { preRollMs: 0, resumeMs: 0, maxWaitMs: 0, stallGiveUpMs: 6000, maxLeadMs: 0, rateWindowMs: 600 }],
     ["fixed 350 / 220 (no adapting)", { ...DEFAULT_PLAYOUT, maxLeadMs: 350 }],
     ["adaptive (default)", DEFAULT_PLAYOUT],
 ];
+const fixed = (preRollMs: number, resumeMs: number): PlayoutConfig => ({ ...DEFAULT_PLAYOUT, preRollMs, resumeMs, maxLeadMs: 0 });
+policies.push(["fixed 600 / 300", fixed(600, 300)], ["fixed 800 / 400", fixed(800, 400)], ["fixed 1000 / 500", fixed(1000, 500)]);
+policies.push(["fixed 200 / 150", fixed(200, 150)], ["fixed 250 / 200", fixed(250, 200)]);
+policies.push(["adaptive 250 / 180", { ...DEFAULT_PLAYOUT, preRollMs: 250, resumeMs: 180 }], ["adaptive 200 / 150", { ...DEFAULT_PLAYOUT, preRollMs: 200, resumeMs: 150 }], ["adaptive 150 / 120", { ...DEFAULT_PLAYOUT, preRollMs: 150, resumeMs: 120 }]);
 const only = process.argv[2];
+
+// With TRACES=<file of real recorded deliveries> the buffer is judged on what the speech service really did.
+if (process.env.TRACES) {
+    const traces = JSON.parse(fs.readFileSync(process.env.TRACES, "utf8")) as Array<{ sentences: string[]; chunks: Array<{ t: number; ms: number }>; flushedAt: number }>;
+    const gap = Number(process.env.TRACE_GAP_MS ?? 250);
+    const real: Scenario[] = traces.map((tr, i) => ({
+        name: `recording ${i + 1}: ${tr.sentences.join(" ").slice(0, 36)}`,
+        arrivals: tr.chunks.map((c) => ({ at: c.t, audioMs: c.ms })),
+        flushedAt: tr.flushedAt,
+        totalAudioMs: tr.chunks.reduce((sum, c) => sum + c.ms, 0),
+        expect: tr.sentences.map((sentence, k) => ({ at: k * gap, ms: estimateSpeechMs(speechText(sentence)) })),
+    }));
+    console.log(`${real.length} real recordings\n`);
+    for (const [label, config] of policies) {
+        if (only && !label.includes(only)) continue;
+        const results = real.map((scenario) => simulate(scenario, config));
+        const starts = results.map((r) => r.startFromSend).sort((a, b) => a - b);
+        const mean = starts.reduce((sum, v) => sum + v, 0) / starts.length;
+        console.log(`${label.padEnd(34)} first word after send: mean ${String(Math.round(mean)).padStart(5)} ms, worst ${String(Math.round(starts[starts.length - 1]!)).padStart(5)} ms | replies that stopped mid-way ${results.filter((r) => r.underruns > 0).length}/${results.length} (${results.reduce((sum, r) => sum + r.underruns, 0)} stops, ${results.reduce((sum, r) => sum + r.silenceInside, 0)} ms silence, longest ${Math.round(Math.max(...results.map((r) => r.maxGap)))} ms)${results.every((r) => r.finished) ? "" : " | DID NOT FINISH"}`);
+        if (process.env.VERBOSE) results.forEach((r, i) => console.log(`     ${real[i]!.name.padEnd(48)} start ${String(Math.round(r.startFromSend)).padStart(5)} ms | stops ${r.underruns} | silence ${r.silenceInside} ms`));
+    }
+    process.exit(0);
+}
+
 for (const scenario of scenarios) {
     console.log(`\n${scenario.name}`);
     for (const [label, config] of policies) {
