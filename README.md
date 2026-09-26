@@ -119,8 +119,16 @@ A real voice round trip (recorded speech through a headless browser to Deepgram 
 
 ## Testing
 
+The backend tests need a **local** PostgreSQL (they refuse any other host, so they can never touch your real database). The default is `127.0.0.1:5544`, or set `TEST_DATABASE_URL`. One way to get one:
+
 ```bash
-cd backend && npm test          # 400+ tests against a local Postgres and a fake language model
+docker run -d --name aii-test-db -e POSTGRES_HOST_AUTH_METHOD=trust -p 5544:5432 postgres:16-alpine
+```
+
+`npm test` then creates the test database and applies the migrations itself.
+
+```bash
+cd backend && npm test          # 400+ tests against that Postgres and a fake language model
 cd frontend && bunx tsc --noEmit
 
 # The sandbox and every language's harness, inside Docker (the local runner can't compile Java):
