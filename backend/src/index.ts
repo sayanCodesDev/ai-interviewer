@@ -1,21 +1,24 @@
 import "dotenv/config";
 import express from "express";
-import type { Request, Response, NextFunction } from "express";
+import type { Request, Response } from "express";
 import { UrlsValidate } from "./validate";
 import cors from "cors";
 import { GithubScrape } from "./GithubScrape";
-import { setInterviewContext, resetConversation } from "./services/llm";
+import { createInterviewSession, verifyModelAvailable } from "./services/llm";
+import { putSession } from "./services/sessionStore";
+import { runCode } from "./services/codeRunner";
 import Router from "./serverWebrtc";
 import cookieParser from "cookie-parser";
-import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma";
+import { authMiddleware, signAuthToken } from "./auth";
+import type { AuthenticatedRequest } from "./auth";
 
 const app = express();
 
-const JWT_SECRET = process.env.JWT_SECRET || "ai-interviewer-secret-key-12345";
+const PORT = Number(process.env.PORT) || 2000;
 
-app.use(express.json());
+app.use(express.json({ limit: "256kb" }));
 app.use(cookieParser());
 
 const allowedOrigins = process.env.ALLOWED_ORIGINS
@@ -29,33 +32,15 @@ app.use(cors({
 
 app.use(Router);
 
-// Extends Request interface to include user
-interface AuthenticatedRequest extends Request {
-    user?: {
-        id: string;
-        email: string;
-        name?: string | null;
-    };
+function setAuthCookie(req: Request, res: Response, token: string): void {
+    const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
+    res.cookie("token", token, {
+        httpOnly: true,
+        secure: isHttps,
+        sameSite: isHttps ? "none" : "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
 }
-
-// Authentication Middleware
-export const authMiddleware = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
-    const authHeader = req.headers.authorization;
-    const bearerToken = authHeader && authHeader.startsWith("Bearer ") ? authHeader.substring(7) : null;
-    const token = req.cookies.token || bearerToken;
-
-    if (!token) {
-        res.status(401).json({ msg: "No token, authorization denied" });
-        return;
-    }
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string; name?: string | null };
-        req.user = decoded;
-        next();
-    } catch (err) {
-        res.status(401).json({ msg: "Token is not valid" });
-    }
-};
 
 // Auth Routes
 app.post("/api/auth/signup", async (req: Request, res: Response): Promise<void> => {
@@ -81,15 +66,8 @@ app.post("/api/auth/signup", async (req: Request, res: Response): Promise<void> 
             }
         });
 
-        const token = jwt.sign({ id: newUser.id, email: newUser.email, name: newUser.name }, JWT_SECRET, { expiresIn: "7d" });
-
-        const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
-        res.cookie("token", token, {
-            httpOnly: true,
-            secure: isHttps,
-            sameSite: isHttps ? "none" : "lax",
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-        });
+        const token = signAuthToken({ id: newUser.id, email: newUser.email, name: newUser.name });
+        setAuthCookie(req, res, token);
 
         res.status(201).json({
             msg: "User registered successfully",
@@ -124,15 +102,8 @@ app.post("/api/auth/signin", async (req: Request, res: Response): Promise<void> 
             return;
         }
 
-        const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: "7d" });
-
-        const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
-        res.cookie("token", token, {
-            httpOnly: true,
-            secure: isHttps,
-            sameSite: isHttps ? "none" : "lax",
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-        });
+        const token = signAuthToken({ id: user.id, email: user.email, name: user.name });
+        setAuthCookie(req, res, token);
 
         res.json({
             msg: "Signed in successfully",
@@ -152,26 +123,24 @@ app.post("/api/auth/logout", (req: Request, res: Response) => {
     res.json({ msg: "Logged out successfully" });
 });
 
-app.get("/api/auth/me", authMiddleware as any, (req: AuthenticatedRequest, res: Response) => {
+app.get("/api/auth/me", authMiddleware, (req: AuthenticatedRequest, res: Response) => {
     res.json({ user: req.user });
 });
 
-app.post("/api/pre-interview", authMiddleware as any, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+app.post("/api/pre-interview", authMiddleware, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const validate = UrlsValidate.safeParse(req.body);
     if (!validate.success) {
         res.status(411).json({ msg: "Invalid request parameters", errors: validate.error.issues });
         return;
     }
 
+    const userId = req.user!.id;
     const { githubUrl, targetRole } = validate.data;
 
     // Extract github username if present
     const githubUrlUsername = githubUrl
         ? (githubUrl.endsWith("/") ? githubUrl.split("/").slice(0, -1).pop() : githubUrl.split("/").pop())
         : undefined;
-
-    // Reset conversation history for fresh session
-    resetConversation();
 
     let githubRepos: any[] = [];
     if (githubUrlUsername) {
@@ -183,76 +152,27 @@ app.post("/api/pre-interview", authMiddleware as any, async (req: AuthenticatedR
         }
     }
 
-    // Set interview context (Target Role + GitHub)
-    setInterviewContext(targetRole, githubUrlUsername, githubRepos);
+    // Start a transcript scoped to this candidate. Replaces any earlier session
+    // the same user left open, so every interview begins clean.
+    putSession(createInterviewSession(userId, targetRole, githubUrlUsername, githubRepos));
 
     res.json({ githubUrlUsername, targetRole });
 });
 
 
-app.post("/api/execute-code", async (req: Request, res: Response): Promise<void> => {
+app.post("/api/execute-code", authMiddleware, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
         const { code, language } = req.body;
-        if (!code) {
-            res.status(400).json({ output: "Error: No code provided." });
-            return;
-        }
-
-        const langKey = (language || "javascript").toLowerCase();
-
-        if (langKey === "javascript" || langKey === "typescript") {
-            let logs: string[] = [];
-            const originalLog = console.log;
-            const originalError = console.error;
-            
-            try {
-                console.log = (...args) => {
-                    logs.push(args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
-                };
-                console.error = (...args) => {
-                    logs.push("[ERROR] " + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
-                };
-
-                const fn = new Function(code);
-                const result = fn();
-                
-                console.log = originalLog;
-                console.error = originalError;
-
-                let outputText = logs.join("\n");
-                if (result !== undefined && !logs.includes(String(result))) {
-                    outputText += (outputText ? "\nReturn Value: " : "Return Value: ") + JSON.stringify(result);
-                }
-
-                res.json({ output: outputText || "Code executed successfully (no console output)." });
-            } catch (err: any) {
-                console.log = originalLog;
-                console.error = originalError;
-                res.json({ output: `Runtime Error: ${err.message}` });
-            }
-        } else if (langKey === "python") {
-            const { exec } = await import("child_process");
-            const fs = await import("fs");
-            const path = await import("path");
-            const tmpFile = path.join(process.cwd(), `tmp_${Date.now()}.py`);
-            
-            fs.writeFileSync(tmpFile, code);
-            exec(`python3 "${tmpFile}"`, { timeout: 5000 }, (error, stdout, stderr) => {
-                try { fs.unlinkSync(tmpFile); } catch (e) {}
-                if (error) {
-                    res.json({ output: stderr || error.message });
-                } else {
-                    res.json({ output: stdout || "Python code executed successfully (no output)." });
-                }
-            });
-        } else {
-            res.json({ output: `[${langKey.toUpperCase()} Syntax & Logic Check]\nStatus: Clean syntax, solution structured properly!` });
-        }
+        const output = await runCode(code, language);
+        res.json({ output });
     } catch (err: any) {
+        console.error("Code execution error:", err);
         res.status(500).json({ output: `Execution Exception: ${err.message}` });
     }
 });
 
-app.listen(2000, () => {
-    console.log("Server started on port 2000")
+app.listen(PORT, () => {
+    console.log(`Server started on port ${PORT}`)
+    // Surface a bad GROQ_MODEL now rather than as a silent interviewer mid-call.
+    void verifyModelAvailable();
 })

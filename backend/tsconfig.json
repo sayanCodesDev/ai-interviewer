@@ -10,7 +10,7 @@
     "jsx": "react-jsx",
     "allowJs": true,
     "types": [
-      "bun"
+      "node"
     ],
     // Bundler mode
     "moduleResolution": "bundler",
@@ -35,8 +35,7 @@
         "./*"
       ]
     },
-    "esModuleInterop": true,
-    "ignoreDeprecations": "6.0"
+    "esModuleInterop": true
   },
   "include": [
     "**/*.ts",
