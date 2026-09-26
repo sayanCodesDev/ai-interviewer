@@ -155,6 +155,10 @@ export function Interview() {
         return delivered;
     }
 
+    function handleCodeSnapshot(code: string, language: Language) {
+        if (editor.problem) session.send({ type: "CODE_SNAPSHOT", problemKey: editor.problem.key, language, code: code.slice(0, 12_000) });
+    }
+
     function handleSubmitNotes(text: string) {
         return session.send({ type: "SUBMIT_NOTES", text });
     }
@@ -188,6 +192,7 @@ export function Interview() {
             onSubmitNotes={handleSubmitNotes}
             onClose={toggleEditor}
             preferredLanguage={editor.language}
+            onCodeSnapshot={handleCodeSnapshot}
         />
     );
 

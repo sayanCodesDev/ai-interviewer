@@ -381,6 +381,31 @@ describe("LiveInterview: coding", () => {
         return { ...ctx, voice };
     }
 
+    test("what they type is seen by the interviewer, without interrupting anything", async () => {
+        const llm = new FakeLlm(brain());
+        const ctx = await setup("quick", { llm });
+        const voice = await ctx.connect();
+        for (let i = 0; i < 8 && voice.of("SHOW_CODE_EDITOR").length === 0; i++) await ctx.say(voice, ANSWER);
+        const key = voice.of("SHOW_CODE_EDITOR")[0].problem.key as string;
+
+        const code = "function solve(nums) {\n  const seen = new Map();\n  for (const n of nums) seen.set(n, true);\n}\n";
+        const stopsBefore = voice.stops;
+        voice.handlers.onClientMessage(JSON.stringify({ type: "CODE_SNAPSHOT", problemKey: key, language: "javascript", code }));
+        assert.equal(voice.stops, stopsBefore, "typing does not stop the interviewer");
+
+        await ctx.say(voice, "I am building a map of the values first, then I will look for the complement.");
+        const directive = llm.calls[llm.calls.length - 1]!.messages.at(-1)!.content;
+        assert.match(directive, /You can see their editor/);
+        assert.match(directive, /const seen = new Map\(\)/);
+
+        // A snapshot for a problem that is not open, or that is too large, is ignored.
+        voice.handlers.onClientMessage(JSON.stringify({ type: "CODE_SNAPSHOT", problemKey: "not-open", language: "javascript", code: "x".repeat(50) }));
+        voice.handlers.onClientMessage(JSON.stringify({ type: "CODE_SNAPSHOT", problemKey: key, language: "javascript", code: "y".repeat(20_000) }));
+        await ctx.say(voice, "Let me keep going with the second loop over the numbers now.");
+        const later = llm.calls[llm.calls.length - 1]!.messages.at(-1)!.content;
+        assert.match(later, /const seen = new Map\(\)/, "the last valid snapshot is still what they see");
+    });
+
     test("a submission is graded in the sandbox, redacted for the browser, saved, and reviewed aloud", async () => {
         const { voice, live, created } = await toCoding();
         const shown = voice.of("SHOW_CODE_EDITOR")[0];
