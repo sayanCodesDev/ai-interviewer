@@ -8,18 +8,9 @@
 import "./fonts.css";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.js";
-import { RecoilRoot } from "recoil";
-import axios from "axios";
-
-// Send cookies with every request globally (needed for JWT auth on all pages)
-axios.defaults.withCredentials = true;
 
 const elem = document.getElementById("root")!;
-const app = (
-    <RecoilRoot>
-        <App />
-    </RecoilRoot>
-);
+const app = <App />;
 
 // https://bun.com/docs/bundler/hot-reloading#import-meta-hot-data
 (import.meta.hot.data.root ??= createRoot(elem)).render(app);

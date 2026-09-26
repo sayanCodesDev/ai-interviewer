@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/context/AuthContext";
 
-export function getInitials(name?: string, fallback = "U") {
+export function getInitials(name?: string | null, fallback = "U") {
     const letters = (name ?? "")
         .split(/\s+/)
         .filter(Boolean)

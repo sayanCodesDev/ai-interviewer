@@ -1,4 +1,3 @@
-import axios from "axios";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -10,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/context/AuthContext";
 import { AuthLayout } from "@/layouts/AuthLayout";
-import { BACKEND_URL } from "@/lib/config";
+import { api, apiErrorMessage } from "@/lib/api";
 import { usePageTitle } from "@/hooks/usePageTitle";
 
 interface FormErrors {
@@ -22,7 +21,7 @@ interface FormErrors {
 export function Signin() {
     usePageTitle("Sign in");
     const navigate = useNavigate();
-    const { refresh } = useAuth();
+    const { acceptSession } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [errors, setErrors] = useState<FormErrors>({});
@@ -40,15 +39,12 @@ export function Signin() {
 
         setLoading(true);
         try {
-            const response = await axios.post(`${BACKEND_URL}/api/auth/signin`, { email: email.trim(), password });
-            if (response.data.token) {
-                localStorage.setItem("token", response.data.token);
-            }
-            await refresh();
+            const response = await api.post("/api/auth/signin", { email: email.trim(), password });
+            acceptSession(response.data);
             toast.success("Signed in");
-            navigate(`/form?userId=${response.data.userId}`);
-        } catch (error: any) {
-            setErrors({ form: error.response?.data?.msg || "We couldn't sign you in. Check your details and try again." });
+            navigate(`/form?userId=${response.data.user.id}`);
+        } catch (error) {
+            setErrors({ form: apiErrorMessage(error, "We couldn't sign you in. Check your details and try again.") });
         } finally {
             setLoading(false);
         }
