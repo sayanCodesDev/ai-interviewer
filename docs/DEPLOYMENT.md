@@ -128,6 +128,17 @@ The API is stateless apart from live calls, so run more instances behind a load 
 - **Capacity:** `MAX_CONCURRENT_INTERVIEWS` per instance returns a 503 with `Retry-After` beyond it. The README has measured numbers; scale on `ai_interviewer_active_interviews` and CPU.
 - **The model provider is the real ceiling.** Watch `ai_interviewer_llm_errors_total`.
 
+## After you deploy
+
+Run the smoke test from any machine that can reach the API. It signs up a throwaway account, exercises sign-in, session refresh and interviews (every table the app writes to), then deletes everything it created:
+
+```bash
+cd backend
+BASE_URL=https://api.example.com ORIGIN=https://app.example.com ALLOW_REMOTE=1 npx tsx scripts/smoke.ts
+```
+
+If it fails, the step name says where. Then open the site, sign in, and start a Quick screen with your microphone to check the parts a script can't: that you can hear the interviewer and it can hear you.
+
 ## Operating it
 
 - **Health:** `/healthz` (alive) and `/readyz` (database reachable and schema current). Point the load balancer at `/readyz`.
