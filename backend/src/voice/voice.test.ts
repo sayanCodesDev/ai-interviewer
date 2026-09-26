@@ -78,6 +78,16 @@ describe("SentenceChunker", () => {
         assert.deepEqual(chunk("Ask Dr. Smith about it. Then J. Doe."), ["Ask Dr. Smith about it.", "Then J. Doe."]);
     });
 
+    test("keeps a trailing-off pause with the words that follow it", () => {
+        for (const size of [1, 3, 7, 50]) {
+            assert.deepEqual(chunk("Well... let me think about that. Okay?", size), ["Well... let me think about that.", "Okay?"], `size ${size}`);
+            assert.deepEqual(chunk("So… what would you do here? Go on.", size), ["So… what would you do here?", "Go on."], `size ${size}`);
+        }
+        // A capital after the ellipsis is a new sentence, and one at the very end is released when the stream ends.
+        assert.deepEqual(chunk("Hmm... Okay. Let's go."), ["Hmm...", "Okay.", "Let's go."]);
+        assert.deepEqual(chunk("Let me think..."), ["Let me think..."]);
+    });
+
     test("holds a sentence until it is known to be finished", () => {
         const chunker = new SentenceChunker();
         assert.deepEqual(chunker.push("The complexity is O(n"), []);

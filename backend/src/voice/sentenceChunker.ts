@@ -92,6 +92,20 @@ export class SentenceChunker {
                 i = end - 1;
                 continue;
             }
+            // "Well... let me think": a trailing-off pause, not the end of a thought. Sent on its own, "Well..." is spoken
+            // as a whole utterance with a long silence after it.
+            if (/\.{2,}|…/.test(text.slice(i, end))) {
+                let next = end;
+                while (next < text.length && /\s/.test(text[next]!)) next++;
+                if (next >= text.length) {
+                    if (final) return end;
+                    return -1; // can't tell yet whether a lowercase word follows
+                }
+                if (/\p{Ll}/u.test(text[next]!)) {
+                    i = end - 1;
+                    continue;
+                }
+            }
             return end;
         }
 

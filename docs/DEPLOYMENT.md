@@ -151,7 +151,9 @@ If it fails, the step name says where. Then open the site, sign in, and start a 
 
 ## Voice quality
 
-If the interviewer's voice glitches, work from the listener's end back to the source. Each step has a number you can read.
+If the interviewer's voice glitches, start with the check that needs no browser: `cd backend && npx tsx scripts/voice-check.ts`. It sends a few interviewer-style replies to the speech service from the machine you run it on, records when each piece of audio arrives, checks that the machine keeps steady time, replays the recording through the same smoothing buffer the server uses, and prints a verdict with the `VOICE_PREROLL_MS` to set if the connection needs more. (On a typical broadband connection the service delivers audio in bursts, the first second slower than real time; without the buffer that is about 15 stops per reply, with it none.)
+
+Then work from the listener's end back to the source. Each step has a number you can read.
 
 1. **In the browser.** The room shows "Weak connection" when the browser is hiding gaps in the voice (5% packet loss, or 8% of the audio invented). That is the network or Wi-Fi between the browser and the API, not the speech service: try a wired connection, and check the UDP rules in [WebRTC and firewalls](#webrtc-and-firewalls). A Bluetooth headset with its microphone on drops to phone-call quality and sounds muffled and broken; use wired headphones or the computer's own speakers. The lobby plays a sample of the interviewer's voice and warns when it sees a Bluetooth microphone.
 2. **On the server.** Every browser reports how the voice arrives every five seconds, and `GET /metrics` shows it: `ai_interviewer_client_packet_loss_percent`, `ai_interviewer_client_concealed_audio_percent`, `ai_interviewer_weak_connection_windows_total`. A bad stretch also logs "The candidate's voice connection is weak" with the numbers.
