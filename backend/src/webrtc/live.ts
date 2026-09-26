@@ -417,6 +417,12 @@ export class LiveInterview {
         this.voice?.duck?.(false);
     }
 
+    /** Waits until the candidate is not in the middle of saying something, for at most `maxMs`. */
+    private async untilCandidateQuiet(maxMs: number): Promise<void> {
+        const until = Date.now() + maxMs;
+        while (this.voice?.candidateSpeaking && Date.now() < until && !this.finalized) await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
     /** Waits, but stops waiting as soon as the candidate cuts in. */
     private async wait(run: Run, ms: number): Promise<void> {
         const until = Date.now() + ms;
@@ -574,12 +580,14 @@ export class LiveInterview {
 
         voice.endSpeech();
         this.replyActive = false;
+        const wroteAt = Date.now();
 
         // The turn is over when its last word has been heard, not when the model finished writing it. Everything the
         // conductor does next (moving on, closing a question) depends on what the candidate actually heard.
         if (!run.interrupted) await voice.drained(MAX_PLAYBACK_WAIT_MS);
         cancelPlaybackWatch();
         clearTimeout(fallback);
+        logger.debug({ interviewId: this.id, kind: turn.kind, sentences: sentences.length, wroteMs: wroteAt - startedAt, playedMs: Date.now() - wroteAt, cutIn: run.interrupted }, "Interviewer turn finished");
 
         const cutIn = run.interrupted;
         if (cutIn && sentences.length > 0) {
@@ -644,8 +652,11 @@ export class LiveInterview {
         }
         const turn = this.conductor.onTick();
         if (turn && !this.replyActive) {
-            this.abortReply();
-            this.enqueue(() => this.perform(turn));
+            // Time is up, but not mid-sentence: whoever is speaking finishes, then the interviewer closes.
+            this.enqueue(async () => {
+                await this.untilCandidateQuiet(5_000);
+                await this.perform(turn);
+            });
         }
     }
 
