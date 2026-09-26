@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, test } from "node:test";
 import { FakeLlm } from "../testing/fakeLlm";
 import { setLlmForTesting } from "../llm/client";
-import { parseGithubInput, GITHUB_USERNAME } from "./github";
+import { parseGithubInput, GITHUB_USERNAME, type GithubProfile } from "./github";
 import { analyseCandidate, fallbackAnalysis } from "./jdAnalysis";
 import { FORMATS, FORMAT_PRESETS, LEVELS } from "./plan";
 import { buildPlan, publicPlanSummary } from "./planBuilder";
@@ -33,6 +33,56 @@ describe("role banks", () => {
         for (const role of ["Full Stack Developer", "Frontend Engineer", "Backend Engineer", "DevOps / SRE Engineer", "Data Engineer", "Mobile App Developer (React Native/Flutter)", "System Architect / Tech Lead"]) {
             assert.ok(SUPPORTED_ROLES.includes(role), role);
         }
+    });
+});
+
+describe("questions and problems follow the candidate's own material", () => {
+    const github: GithubProfile = {
+        username: "sam",
+        repos: [
+            { name: "slot-finder", description: "Finds free meeting slots across calendars", language: "Python", topics: ["scheduling", "calendar"], stars: 12 },
+            { name: "dotfiles", description: "", language: "Shell", topics: [], stars: 0 },
+            { name: "kafka-lag-exporter", description: "Exports consumer lag from Kafka to Prometheus", language: "Go", topics: ["kafka"], stars: 3 },
+        ],
+    };
+    const jobDescription = "Backend engineer on our booking platform. You will build the scheduling service: calendars, availability and time-slot conflicts, on PostgreSQL and Kafka.";
+
+    test("with no model, the bank's questions are ordered by what the job description and repositories mention", () => {
+        const analysis = fallbackAnalysis({ role: "Backend Engineer", level: "mid", jobDescription, github });
+        const top = analysis.technical.slice(0, 4).map((q) => `${q.skill} ${q.question}`).join(" ").toLowerCase();
+        assert.match(top, /messag|queue|kafka|database|index|transaction/, top);
+        const plain = fallbackAnalysis({ role: "Backend Engineer", level: "mid" });
+        assert.notDeepEqual(analysis.technical.map((q) => q.question), plain.technical.map((q) => q.question), "the order changed because of the material");
+    });
+
+    test("two of the candidate's own projects become background questions, the ones with something written about them first", () => {
+        const analysis = fallbackAnalysis({ role: "Backend Engineer", level: "mid", jobDescription, github });
+        const projects = analysis.background.filter((b) => b.topic.startsWith("Project:"));
+        assert.equal(projects.length, 2);
+        assert.match(projects[0]!.question, /slot-finder/);
+        assert.match(projects[0]!.question, /Finds free meeting slots/);
+        assert.ok(!projects.some((p) => /dotfiles/.test(p.question)), "an empty repository is not worth a question");
+    });
+
+    test("the plan records what was learned, and each coding problem says what it speaks to", () => {
+        const analysis = fallbackAnalysis({ role: "Backend Engineer", level: "mid", jobDescription, github });
+        const plan = buildPlan({ role: "Backend Engineer", level: "mid", format: "standard", analysis, seed: "sel-1" });
+        assert.equal(plan.selection?.languages[0], "python");
+        assert.ok((plan.selection?.tags.intervals ?? 0) > 1);
+        assert.equal(plan.selection?.themes[0], "scheduling and calendars");
+        const problems = plan.rounds.flatMap((r) => r.items).filter((i) => i.kind === "coding") as Array<{ problemKey: string; why?: string }>;
+        assert.ok(problems.some((p) => (getProblemDef(p.problemKey)?.tags ?? []).includes("intervals")), "a scheduling role gets a scheduling-shaped problem");
+        assert.ok(problems.some((p) => p.why === "scheduling and calendars"));
+    });
+
+    test("different job descriptions give different problems for the same role and level", () => {
+        const pick = (jd: string) => {
+            const analysis = fallbackAnalysis({ role: "Backend Engineer", level: "mid", jobDescription: jd });
+            return buildPlan({ role: "Backend Engineer", level: "mid", format: "standard", analysis, seed: "same-seed" }).rounds.flatMap((r) => r.items).filter((i) => i.kind === "coding").map((i) => (i.kind === "coding" ? i.problemKey : ""));
+        };
+        const scheduling = pick("Own the scheduling service: calendars, availability and booking conflicts for clinics.");
+        const graphs = pick("Own the dependency resolver: model packages as a dependency graph and compute build order across the graph.");
+        assert.notDeepEqual(scheduling, graphs);
     });
 });
 

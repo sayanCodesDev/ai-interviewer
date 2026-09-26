@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { after, afterEach, before, beforeEach, describe, test } from "node:test";
 import { prisma } from "../../../lib/prisma";
 import { config } from "../../config/env";
+import { setGithubFetchForTesting } from "../../interview/github";
 import { setLlmForTesting } from "../../llm/client";
 import { FakeLlm } from "../../testing/fakeLlm";
 import { resetDatabase } from "../../testing/db";
@@ -20,11 +21,26 @@ after(async () => {
     await server.close();
     await prisma.$disconnect();
 });
+/** GitHub, as the tests see it: two accounts, one of which does not exist, and an outage on demand. */
+let githubDown = false;
+const fakeGithub = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (githubDown) return new Response("rate limited", { status: 403 });
+    if (/\/users\/[^/]+\/repos/.test(url)) return Response.json([]);
+    if (/\/users\/(octocat|torvalds)$/i.test(url)) return Response.json({ login: "octocat" });
+    return new Response("not found", { status: 404 });
+}) as typeof fetch;
+
 beforeEach(async () => {
     await resetDatabase();
+    githubDown = false;
+    setGithubFetchForTesting(fakeGithub);
     setLlmForTesting(new FakeLlm("{}"));
 });
-afterEach(() => setLlmForTesting(null));
+afterEach(() => {
+    setLlmForTesting(null);
+    setGithubFetchForTesting(null);
+});
 
 async function signedIn(email: string): Promise<TestClient> {
     const client = new TestClient(server.url);
@@ -33,7 +49,8 @@ async function signedIn(email: string): Promise<TestClient> {
     return client;
 }
 
-const SETUP = { role: "Backend Engineer", level: "mid", format: "standard" };
+const JOB_DESCRIPTION = "Backend engineer for our payments platform. You will build Go services on PostgreSQL and Kafka, own their reliability, and mentor the team.";
+const SETUP = { role: "Backend Engineer", level: "mid", format: "standard", jobDescription: JOB_DESCRIPTION, githubUrl: "https://github.com/octocat" };
 
 async function waitForPlan(client: TestClient, id: string) {
     for (let i = 0; i < 60; i++) {
@@ -61,9 +78,54 @@ describe("creating an interview", () => {
         assert.equal(await prisma.interview.count(), 0);
     });
 
+    test("the job description is required, and must be long enough to mean something", async () => {
+        const client = await signedIn("a@example.com");
+        const { jobDescription: _jd, ...withoutJd } = SETUP;
+        const missing = await client.post("/api/interviews", withoutJd);
+        assert.equal(missing.status, 400);
+        assert.match(missing.body.fields.jobDescription, /Paste the job description/);
+
+        const blank = await client.post("/api/interviews", { ...SETUP, jobDescription: "   " });
+        assert.equal(blank.status, 400);
+        assert.ok(blank.body.fields.jobDescription);
+
+        const short = await client.post("/api/interviews", { ...SETUP, jobDescription: "Backend dev" });
+        assert.equal(short.status, 400);
+        assert.match(short.body.fields.jobDescription, /too short/);
+        assert.equal(await prisma.interview.count(), 0);
+    });
+
+    test("GitHub is required, and the account must exist", async () => {
+        const client = await signedIn("a@example.com");
+        const { githubUrl: _github, ...withoutGithub } = SETUP;
+        const missing = await client.post("/api/interviews", withoutGithub);
+        assert.equal(missing.status, 400);
+        assert.match(missing.body.fields.githubUrl, /Add your GitHub profile/);
+        assert.equal((await client.post("/api/interviews", { ...SETUP, githubUrl: "" })).status, 400);
+
+        const ghost = await client.post("/api/interviews", { ...SETUP, githubUrl: "https://github.com/nobody-has-this-name" });
+        assert.equal(ghost.status, 400);
+        assert.equal(ghost.body.code, "github_not_found");
+        assert.match(ghost.body.fields.githubUrl, /nobody-has-this-name/);
+        assert.equal(await prisma.interview.count(), 0);
+
+        // A bare username works too, and is stored as the username alone.
+        const bare = await client.post("/api/interviews", { ...SETUP, githubUrl: "torvalds" });
+        assert.equal(bare.status, 201);
+        const stored = await prisma.interview.findUniqueOrThrow({ where: { id: bare.body.id } });
+        assert.equal(stored.githubUsername, "torvalds");
+    });
+
+    test("when GitHub itself cannot be asked, a candidate is not blocked from starting", async () => {
+        githubDown = true;
+        const client = await signedIn("a@example.com");
+        const res = await client.post("/api/interviews", SETUP);
+        assert.equal(res.status, 201);
+    });
+
     test("creates the interview and prepares a plan in the background", async () => {
         const client = await signedIn("a@example.com");
-        const created = await client.post("/api/interviews", { ...SETUP, githubUrl: "" });
+        const created = await client.post("/api/interviews", SETUP);
         assert.equal(created.status, 201);
 
         const ready = await waitForPlan(client, created.body.id);
@@ -81,7 +143,7 @@ describe("creating an interview", () => {
     test("accepts a job description and a text resume", async () => {
         const client = await signedIn("a@example.com");
         const form = new FormData();
-        for (const [k, v] of Object.entries({ ...SETUP, jobDescription: "We build payment systems in Go and Postgres." })) form.append(k, v);
+        for (const [k, v] of Object.entries({ ...SETUP, jobDescription: "We build payment systems in Go and Postgres, and we own reliability end to end." })) form.append(k, v);
         form.append("resume", new Blob(["Jane Doe. Senior engineer. Built payment systems in Go for six years."], { type: "text/plain" }), "cv.txt");
 
         const res = await fetch(`${server.url}/api/interviews`, { method: "POST", headers: { Authorization: `Bearer ${client.accessToken}`, Origin: "http://localhost:3000" }, body: form });

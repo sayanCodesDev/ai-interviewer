@@ -27,7 +27,7 @@ export function Privacy() {
 
                 <Section title="What we collect">
                     <p><strong className="text-foreground">Your account:</strong> your name, your email address and a hash of your password (never the password itself).</p>
-                    <p><strong className="text-foreground">What you give us for an interview:</strong> the role and level you choose, and anything you optionally add: a job description, your resume (its text, extracted from the file you upload) and your public GitHub username.</p>
+                    <p><strong className="text-foreground">What you give us for an interview:</strong> the role and level you choose, the job description you paste, your public GitHub username, and optionally your resume (its text, extracted from the file you upload).</p>
                     <p><strong className="text-foreground">What happens during an interview:</strong> a transcript of the conversation, the code you write, run and submit with its test results, and the report we generate from them. Your voice is processed live to be turned into text; <strong className="text-foreground">we do not record or store audio</strong>.</p>
                     <p><strong className="text-foreground">Technical data:</strong> a sign-in session (a cookie that keeps you signed in) and basic request logs such as time, route and IP address, kept briefly to run and secure the service.</p>
                 </Section>

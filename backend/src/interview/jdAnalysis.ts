@@ -7,6 +7,7 @@ import { summariseGithub, type GithubProfile } from "./github";
 import { LEVEL_INDEX, type JdAnalysis } from "./plan";
 import { KNOWN_TAGS, type Level } from "./problems";
 import { BEHAVIORAL_BANK, GENERIC_BACKGROUND, getRoleBank, levelLabel, type BackgroundQuestion, type BankQuestion, type DesignPrompt } from "./roleBanks";
+import { extractSignals, type Signals } from "./signals";
 import { UNTRUSTED_NOTICE, sanitizeUntrusted, untrustedBlock } from "./untrusted";
 
 export interface AnalysisInput {
@@ -32,6 +33,8 @@ export interface Analysis {
     design: DesignPrompt | null;
     /** A few lines for the interviewer: the role's focus and what the candidate's own material shows. */
     brief: string;
+    /** What the candidate's material says about the work: which problem topics fit, and which language they use. */
+    signals: Signals;
     source: "llm" | "fallback";
 }
 
@@ -107,12 +110,33 @@ ${SHAPE}`;
 /** Enough questions to fill the longest format (a technical round plus a concepts round) at any level. */
 const MIN_QUESTIONS = 8;
 
-function questionsForLevel(role: string, level: Level): BankQuestion[] {
+const STOP_WORDS = new Set(["about", "which", "their", "there", "would", "could", "should", "these", "those", "where", "while", "being", "other", "between", "through", "using", "make", "your", "with", "that", "this", "from", "have", "what", "when", "will", "into", "also", "than", "then", "they", "them", "does", "must", "team", "work", "experience", "role", "years", "strong", "ability", "including", "across", "build", "building", "such", "well", "over", "more", "most", "each", "like", "need", "help"]);
+
+function tokensOf(text: string): string[] {
+    return (text.toLowerCase().match(/[a-z][a-z0-9+#.]{2,}/g) ?? []).map((t) => t.replace(/\.+$/, "")).filter((t) => t.length >= 3 && !STOP_WORDS.has(t));
+}
+
+/** The words in the candidate's job description, resume and repositories: what to match the question bank against. */
+function corpusTokens(input: AnalysisInput): Set<string> {
+    return new Set(tokensOf([input.jobDescription ?? "", input.resumeText ?? "", summariseGithub(input.github ?? null)].join("\n")));
+}
+
+/** How much of what a question is about the candidate's own material mentions. The skill name counts most. */
+function questionRelevance(question: BankQuestion, corpus: Set<string>): number {
+    const skill = new Set(tokensOf(question.skill));
+    const body = new Set(tokensOf([question.question, ...question.lookFor, ...question.followUps].join(" ")));
+    let score = 0;
+    for (const token of skill) if (corpus.has(token)) score += 3;
+    for (const token of body) if (corpus.has(token)) score += 1;
+    return score;
+}
+
+function questionsForLevel(role: string, level: Level, corpus: Set<string> = new Set()): BankQuestion[] {
     const bank = getRoleBank(role);
     const index = LEVEL_INDEX[level];
     const eligible = bank.technical.filter((question) => question.minLevel <= index);
-    // Harder questions first for senior candidates, fundamentals first for juniors.
-    const ordered = [...eligible].sort((a, b) => (index >= 3 ? b.minLevel - a.minLevel : a.minLevel - b.minLevel));
+    // What the job description and the candidate's own work mention first; then harder questions first for senior candidates, fundamentals first for juniors.
+    const ordered = [...eligible].sort((a, b) => questionRelevance(b, corpus) - questionRelevance(a, corpus) || (index >= 3 ? b.minLevel - a.minLevel : a.minLevel - b.minLevel));
     if (ordered.length >= MIN_QUESTIONS) return ordered;
 
     // A junior picking a leadership-heavy role still deserves a full interview: borrow the gentlest of the rest.
@@ -127,14 +151,21 @@ function behavioralForLevel(level: Level): BehavioralQuestion[] {
         .map(({ topic, question, lookFor }) => ({ topic, question, lookFor }));
 }
 
+/** Questions about the candidate's own projects, from their public repositories: the ones with something written about them first. */
 function githubBackground(github: GithubProfile | null | undefined): BackgroundQuestion[] {
-    const repo = github?.repos.find((r) => r.description || r.readme) ?? github?.repos[0];
-    if (!repo) return [];
-    return [{
-        topic: `Project: ${repo.name}`,
-        question: `I saw a project of yours called ${repo.name}${repo.language ? `, written in ${repo.language}` : ""}. What was it for, and what was the hardest technical decision you made in it?`,
-        lookFor: ["Clear purpose and scope", "A specific technical decision and its trade-offs", "What they would do differently"],
-    }];
+    const repos = [...(github?.repos ?? [])].sort((a, b) => Number(Boolean(b.description || b.readme)) - Number(Boolean(a.description || a.readme)) || b.stars - a.stars);
+    return repos.slice(0, 2).map((repo, i) => {
+        const about = repo.description ? ` It's described as "${repo.description.replace(/["\n]/g, " ").slice(0, 120)}".` : "";
+        return {
+            topic: `Project: ${repo.name}`,
+            question: i === 0
+                ? `I saw a project of yours called ${repo.name}${repo.language ? `, written in ${repo.language}` : ""}.${about} What was it for, and what was the hardest technical decision you made in it?`
+                : `You also have ${repo.name}${repo.language ? ` in ${repo.language}` : ""}.${about} If you started it again today, what would you do differently?`,
+            lookFor: i === 0
+                ? ["Clear purpose and scope", "A specific technical decision and its trade-offs", "What they would do differently"]
+                : ["Honest reflection on what they got wrong", "Concrete improvements, not generalities", "Understanding of the trade-offs they accepted"],
+        };
+    });
 }
 
 /** Role-and-level questions from the hand-written bank. Used when there is nothing to analyse, or the model fails. */
@@ -150,7 +181,8 @@ export function fallbackAnalysis(input: AnalysisInput): Analysis {
             codingTags: bank.codingTags,
             behavioralFocus: [],
         },
-        technical: questionsForLevel(input.role, input.level),
+        signals: extractSignals({ role: input.role, jobDescription: input.jobDescription, resumeText: input.resumeText, github: input.github, roleTags: bank.codingTags }),
+        technical: questionsForLevel(input.role, input.level, corpusTokens(input)),
         background: [...githubBackground(input.github), ...GENERIC_BACKGROUND],
         behavioral: behavioralForLevel(input.level),
         design: bank.design[0] ?? null,
@@ -198,6 +230,7 @@ function fromReply(reply: z.infer<typeof replySchema>, input: AnalysisInput): An
 
     return {
         source: "llm",
+        signals: extractSignals({ role: input.role, jobDescription: input.jobDescription, resumeText: input.resumeText, github: input.github, modelTags: codingTags, roleTags: getRoleBank(input.role).codingTags }),
         brief: reply.brief || fallback.brief,
         jd: {
             title: reply.title,
