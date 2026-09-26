@@ -141,7 +141,7 @@ interface RunTestsInput {
     cases: CaseInput[];
 }
 
-function blankRun(status: RunStatus, cases: CaseInput[], extra: Partial<TestRun> = {}): TestRun {
+export function blankRun(status: RunStatus, cases: CaseInput[], extra: Partial<TestRun> = {}): TestRun {
     return {
         status,
         passed: 0,

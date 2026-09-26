@@ -8,6 +8,7 @@ import { verifyModels } from "./llm/client";
 import { logger } from "./observability/logger";
 import { drainLive } from "./webrtc/registry";
 import { describeRunner } from "./runner";
+import { startReportWorker, stopReportWorker } from "./scoring/worker";
 
 const app = createApp({ apiRouters: [accountRouter, interviewsRouter, webrtcRouter] });
 
@@ -20,6 +21,8 @@ const server = app.listen(config.port, () => {
         else logger.error({ runner: runner.kind, reason: runner.reason }, "Code runner unavailable: running code will fail");
     });
 });
+
+startReportWorker();
 
 // Expired refresh tokens can never be used again; sweep them out once a day.
 const sweep = setInterval(() => {
@@ -34,6 +37,7 @@ async function shutdown(signal: string) {
     logger.info({ signal }, "Shutting down: no new calls, letting live interviews finish");
     // New HTTP requests are refused by closing the listener; running calls (WebRTC) keep going for a while.
     server.close();
+    stopReportWorker();
     await drainLive(Number(process.env.SHUTDOWN_GRACE_MS) || 60_000);
     process.exit(0);
 }

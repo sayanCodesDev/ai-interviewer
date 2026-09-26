@@ -2,6 +2,7 @@ import { logger } from "../observability/logger";
 import { TurnTaker } from "../voice/turnTaker";
 import { connectStt, type SttConnection } from "../voice/stt";
 import { connectTts, type TtsConnection } from "../voice/tts";
+import { config } from "../config/env";
 import { AudioPeer } from "./peer";
 
 export interface VoiceParams {
@@ -83,10 +84,13 @@ export class Voice implements VoiceLike {
     static async open(offer: { sdp: string; type: "offer" }, params: VoiceParams, handlers: VoiceHandlers): Promise<{ voice: Voice; answer: { sdp: string; type: string } }> {
         const voice = new Voice(params, handlers);
         try {
-            voice.stt = await connectStt({ accent: params.accent, keyterms: params.keyterms });
-            voice.wireStt(voice.stt);
-            voice.tts = await connectTts(params.voice);
-            voice.wireTts(voice.tts);
+            // In text mode (development and tests) nobody speaks: skip recognition and synthesis entirely.
+            if (config.voiceMode === "live") {
+                voice.stt = await connectStt({ accent: params.accent, keyterms: params.keyterms });
+                voice.wireStt(voice.stt);
+                voice.tts = await connectTts(params.voice);
+                voice.wireTts(voice.tts);
+            }
             const answer = await voice.peer.accept(offer);
             return { voice, answer };
         } catch (error) {
