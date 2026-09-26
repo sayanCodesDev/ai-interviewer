@@ -135,6 +135,7 @@ Beyond unit and integration tests, the repository contains the tools used to ver
 | `backend/scripts/simulate-interview.ts` | Whole interviews through the real conductor and scorer. `SIM_SCRIPTED=1` uses scripted candidates at three skill levels and checks that scores order strong > average > weak (measured: 83 / 63 / 23) without spending model tokens on the dialogue. |
 | `backend/scripts/mock-llm.ts` | An offline stand-in for the language model, for trying everything for free. |
 | `backend/scripts/load-test.ts` | N simultaneous WebRTC interviews; reports latency, CPU and memory. |
+| `backend/scripts/smoke.ts` | The quick check to run after a deploy or a database change: sign up, sign in, refresh, create/read/delete an interview, delete the account, against any server (`BASE_URL=... ALLOW_REMOTE=1`). Leaves nothing behind. |
 | `backend/scripts/security-probe.ts` | Attacks a running server: forged and replayed tokens, other users' data, hostile input, uploads, rate limits (57 checks). Local addresses only. |
 | `backend/scripts/verify-problems.ts` | Every problem's reference solution against every language harness. |
 | `frontend/scripts/serve-dist.ts` | Serves the production build the way a static host would (rewrites, 404s, headers), for testing it locally. |
