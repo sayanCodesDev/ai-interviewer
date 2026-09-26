@@ -3,9 +3,9 @@ import type { ReplyResult } from "./dialogue";
 import type { EndReason, ServerEvent } from "./events";
 import type { CodingItem, DesignItem, InterviewPlan, PlanRound, TalkItem } from "./plan";
 import { chooseNextProblem, getProblemDef, judgeOutcome, publicView, redactHidden, type ProblemDef, type ProblemOutcome, type TestRun } from "./problems";
-import { directives, roundNotesBlock, timeLine, type TalkView } from "./prompts";
+import { directives, roundNotesBlock, timeLine, type CodeOnScreen, type TalkView } from "./prompts";
 import { relevanceNote } from "./signals";
-import { sanitizeUntrusted } from "./untrusted";
+import { neutraliseDelimiters, sanitizeUntrusted } from "./untrusted";
 
 export type TurnKind =
     | "opening" | "ask" | "respond" | "present" | "coach" | "review" | "explain" | "followup_ask"
@@ -107,6 +107,10 @@ const BRIEF_ANSWER_WORDS = 6;
 /** After this many very short answers in a row to one question, stop pressing and move on. */
 const MAX_BRIEF_IN_A_ROW = 3;
 const HINT_LIMIT = 3;
+/** Saying so, plainly, that they do not know or have not done something. Met with kindness once, and then with a move on. */
+const ADMITS_GAP = /\b(?:don'?t|do not|didn'?t|did not) know\b|\bno idea\b|\bnot (?:really )?sure\b|\b(?:haven'?t|have not|never) (?:used|worked|done|tried|touched|heard)\b|\bnot (?:very )?familiar\b|\bno experience\b/i;
+/** How much of the candidate's editor the interviewer is shown: enough to talk about, not enough to cost a lot of tokens every turn. */
+const CODE_ON_SCREEN_CHARS = 1_800;
 /**
  * A question is not closed until the candidate has said something worth closing on: this many words in total, or a
  * follow-up has already been asked. Otherwise a one-line first answer ends the discussion of a question before it starts.
@@ -143,8 +147,11 @@ export class Conductor {
     /** How each coding problem went, once that was known: what the next problem is chosen from. */
     private readonly problemResults = new Map<string, ProblemOutcome>();
     private lastProblemResult: { key: string; outcome: ProblemOutcome } | null = null;
+    /** What was last seen in the editor, for the problem that is open. */
+    private editorSnapshot: { problemKey: string; language: string; code: string } | null = null;
     private closing = false;
     private lastCandidateWords = 0;
+    private lastCandidateText = "";
 
     constructor(private readonly options: ConductorOptions) {
         this.plan = options.plan;
@@ -277,6 +284,24 @@ export class Conductor {
         return events;
     }
 
+    /** The browser reports what is in the editor. Only the problem that is open counts, and only the latest is kept. */
+    noteCode(problemKey: string, language: string, code: string): void {
+        if (this.ended || this.closing || this.step.t !== "coding" || this.item.kind !== "coding" || this.item.problemKey !== problemKey) return;
+        this.editorSnapshot = { problemKey, language, code };
+    }
+
+    /** What is in the editor now, if it holds something the candidate wrote (not just the starter code). */
+    private codeOnScreen(): CodeOnScreen | undefined {
+        const snapshot = this.editorSnapshot;
+        if (!snapshot || this.step.t !== "coding" || this.item.kind !== "coding" || snapshot.problemKey !== this.item.problemKey) return undefined;
+        const def = this.problem();
+        const starter = publicView(def).starter[snapshot.language]?.trim();
+        const trimmed = snapshot.code.trim();
+        if (trimmed.length < 20 || trimmed === starter) return undefined;
+        const text = neutraliseDelimiters(snapshot.code, CODE_ON_SCREEN_CHARS);
+        return { language: snapshot.language, text, truncated: snapshot.code.length > CODE_ON_SCREEN_CHARS };
+    }
+
     /** The event that puts the current coding problem or design pad on screen, if one is open. */
     editorEvent(): ServerEvent | null {
         if (this.closing) return null;
@@ -357,6 +382,7 @@ export class Conductor {
         this.pendingMove = null;
         this.record("candidate", text);
         this.lastCandidateWords = words(text);
+        this.lastCandidateText = text;
         const step = this.step;
 
         switch (step.t) {
@@ -383,6 +409,7 @@ export class Conductor {
                     maxAttempts: this.plan.maxCodingAttempts,
                     hintsGiven: step.hints,
                     nextHint: step.hints < HINT_LIMIT ? def.hints[step.hints]! : null,
+                    code: this.codeOnScreen(),
                     time: this.time,
                 }), [], ["HINT", "MOVE_ON"]);
             }
@@ -458,7 +485,7 @@ export class Conductor {
         const context = coding
             ? level === 1 ? "They are writing code. Ask how it is going and whether they would like to talk through their approach." : "They may be stuck. Offer a hint if they would like one."
             : level === 1 ? "You are waiting for their answer to your last question." : "You are still waiting for their answer to your last question.";
-        return this.turn("nudge", directives.nudge({ level: level as 1 | 2, context, time: this.time }));
+        return this.turn("nudge", directives.nudge({ level: level as 1 | 2, context, code: coding ? this.codeOnScreen() : undefined, time: this.time }));
     }
 
     /** The call dropped and came back. */
@@ -582,13 +609,25 @@ export class Conductor {
 
     // ---------------------------------------------------------------------------------- movement
 
+    /**
+     * The questions after a solved problem. The first is always the complexity of what they wrote. The second depends on how it went,
+     * as a person's would: someone who solved it cleanly is pushed further, someone who needed help is asked what they learned.
+     */
+    private followUpsFor(def: ProblemDef, step: Extract<Step, { t: "coding" }>): TalkItem[] {
+        const id = this.item.id;
+        const complexity: TalkItem = { kind: "talk", id: `${id}:fu0`, topic: "Complexity", prompt: "What is the time and space complexity of your solution, and why?", lookFor: [`Time: ${def.solution.time}`, `Space: ${def.solution.space}`, "Correct reasoning, not just the final notation"], followUps: [], maxProbes: 1 };
+        const clean = step.attempt <= 1 && step.hints === 0;
+        const second: TalkItem = clean
+            ? { kind: "talk", id: `${id}:fu1`, topic: "Scaling it up", prompt: "Suppose the input were a hundred times larger, or arrived as a stream you could only read once. What would you change, and what would break first?", lookFor: [def.solution.approach, "Names what breaks first: memory, time or ordering", "A concrete change, not just 'use a bigger machine'"], followUps: [], maxProbes: 1 }
+            : step.attempt > 1 || step.hints > 1
+                ? { kind: "talk", id: `${id}:fu1`, topic: "Looking back", prompt: "Looking back, where did your first version go wrong, and how would you catch that kind of mistake sooner next time?", lookFor: ["Names the specific mistake", "A habit that would have caught it: examples, edge cases, a test", "Honest reflection rather than excuses"], followUps: [], maxProbes: 1 }
+                : { kind: "talk", id: `${id}:fu1`, topic: "Optimisation", prompt: "Is there a better approach, or a different approach with different trade-offs?", lookFor: [def.solution.approach, "Understands the trade-off between time and memory"], followUps: [], maxProbes: 1 };
+        return [complexity, second];
+    }
+
     private beginFollowUps(step: Extract<Step, { t: "coding" }>): Outcome {
         const def = this.problem();
-        const all: TalkItem[] = [
-            { kind: "talk", id: `${this.item.id}:fu0`, topic: "Complexity", prompt: "What is the time and space complexity of your solution, and why?", lookFor: [`Time: ${def.solution.time}`, `Space: ${def.solution.space}`, "Correct reasoning, not just the final notation"], followUps: [], maxProbes: 1 },
-            { kind: "talk", id: `${this.item.id}:fu1`, topic: "Optimisation", prompt: "Is there a better approach, or a different approach with different trade-offs?", lookFor: [def.solution.approach, "Understands the trade-off between time and memory"], followUps: [], maxProbes: 1 },
-        ];
-        step.followUps = all.slice(0, this.plan.codingFollowUps);
+        step.followUps = this.followUpsFor(def, step).slice(0, this.plan.codingFollowUps);
         step.followUpIndex = -1;
         step.phase = "followup";
         return this.nextFollowUpOrAdvance(step);
@@ -747,10 +786,12 @@ export class Conductor {
     /** The reply to something the candidate said about a question. May end the question only once they have said enough. */
     private respondTurn(view: TalkView, step: Extract<Step, { words: number }>): Turn {
         const [brief, moveOn] = this.briefness(step);
-        const canProbe = view.probesUsed < view.maxProbes && !moveOn;
+        // "I've never used it": met with a kind, useful follow-up once, and then let go, rather than pressed or ignored.
+        const gap = ADMITS_GAP.test(this.lastCandidateText) && this.lastCandidateWords < 40 ? (step.probes >= 1 || (step.brief ?? 0) >= 2 ? "again" : "first") : "none";
+        const canProbe = view.probesUsed < view.maxProbes && !moveOn && gap !== "again";
         // Closing a question on the strength of a sentence or two is how an interview feels like a form being filled in.
-        const mayMoveOn = !canProbe || step.words >= MIN_WORDS_BEFORE_MOVING_ON || step.probes >= 1;
-        return this.turn("respond", directives.respond(view, brief, moveOn, mayMoveOn), [], mayMoveOn ? ["ADVANCE"] : []);
+        const mayMoveOn = moveOn || gap === "again" || (gap !== "first" && (!canProbe || step.words >= MIN_WORDS_BEFORE_MOVING_ON || step.probes >= 1));
+        return this.turn("respond", directives.respond(view, brief, moveOn, mayMoveOn, gap), [], mayMoveOn ? ["ADVANCE"] : []);
     }
 
     /**

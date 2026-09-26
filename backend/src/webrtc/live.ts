@@ -307,6 +307,10 @@ export class LiveInterview {
                 this.abortReply();
                 this.enqueue(() => this.handleSubmission(message.problemKey, message.language, message.code));
                 break;
+            case "CODE_SNAPSHOT":
+                // Typing is not talking: it neither interrupts the interviewer nor calls off a move on. It is only what they can see.
+                this.conductor.noteCode(message.problemKey, message.language, message.code);
+                break;
             case "SUBMIT_NOTES":
                 this.candidateStirredAt = Date.now();
                 this.abortReply();

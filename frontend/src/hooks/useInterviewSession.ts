@@ -9,6 +9,7 @@ export type SessionStatus = "connecting" | "live" | "reconnecting" | "failed" | 
 
 export type ClientMessage =
     | { type: "SUBMIT_CODE"; problemKey: string; language: string; code: string }
+    | { type: "CODE_SNAPSHOT"; problemKey: string; language: string; code: string }
     | { type: "SUBMIT_NOTES"; text: string }
     | { type: "USER_TEXT"; text: string }
     | { type: "CLIENT_STATS"; lossPercent: number; concealedPercent: number; jitterMs: number; packets: number }

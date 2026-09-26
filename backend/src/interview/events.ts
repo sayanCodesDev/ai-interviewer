@@ -28,6 +28,7 @@ export type ServerEvent =
 export type EndReason = "completed" | "candidate_ended" | "time_limit" | "disconnected" | "error";
 
 const MAX_CODE_BYTES = 100 * 1024;
+const MAX_SNAPSHOT_BYTES = 12 * 1024;
 
 /** Messages the browser may send. Everything is validated: the data channel is untrusted input. */
 export const clientMessageSchema = z.discriminatedUnion("type", [
@@ -38,6 +39,8 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
         code: z.string().max(MAX_CODE_BYTES),
     }),
     z.object({ type: z.literal("SUBMIT_NOTES"), text: z.string().max(8_000) }),
+    /** What is in the editor right now, sent every so often while the candidate types, so the interviewer can see it like a person would. */
+    z.object({ type: z.literal("CODE_SNAPSHOT"), problemKey: z.string().max(80), language: z.enum(LANGUAGES), code: z.string().max(MAX_SNAPSHOT_BYTES) }),
     z.object({ type: z.literal("USER_TEXT"), text: z.string().trim().min(1).max(1_500) }),
     /** How well the interviewer's voice is arriving, measured by the browser every few seconds. */
     z.object({
