@@ -109,12 +109,13 @@ export const directives = {
             view.time,
         ),
 
-    presentProblem: (view: { number: number; total: number; title: string; difficulty: string; statement: string; firstProblem: boolean; time: string }) =>
+    presentProblem: (view: { number: number; total: number; title: string; difficulty: string; statement: string; firstProblem: boolean; why?: string; time: string }) =>
         lines(
             `CURRENT STEP: Coding problem ${view.number} of ${view.total}: "${view.title}" (${view.difficulty}). The code editor opens on their screen with the full statement and examples the moment you finish speaking.`,
             "Do this in order, in at most four short sentences:",
             "1. One short sentence that moves on from what you were just discussing to a coding problem.",
             `2. Describe the problem in your own words, just the idea, in one or two sentences: ${view.statement}`,
+            view.why && `If it fits naturally, say in a few words that this kind of problem comes up in the role's ${view.why}. Do not force it.`,
             view.firstProblem
                 ? "3. Say the full problem and examples are about to appear in the editor, where they can pick a language, and ask them to talk through their approach before or while coding."
                 : "3. Say the full problem is about to appear in the editor, and ask them to talk through their approach before or while coding.",

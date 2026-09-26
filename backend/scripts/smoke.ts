@@ -17,6 +17,10 @@ if (!["localhost", "127.0.0.1", "::1"].includes(host) && process.env.ALLOW_REMOT
     process.exit(1);
 }
 
+// Interviews need a job description and a real GitHub account. octocat is GitHub's own demo account.
+const GITHUB = process.env.SMOKE_GITHUB ?? "octocat";
+const JOB_DESCRIPTION = "Backend engineer for a payments platform. Build Go services on PostgreSQL and Kafka, own their reliability and mentor the team.";
+
 const email = `smoke-${Date.now()}-${crypto.randomBytes(3).toString("hex")}@example.com`;
 const password = `smoke-${crypto.randomBytes(9).toString("base64url")}`;
 let cookie = "";
@@ -89,7 +93,7 @@ try {
         token = res.json.accessToken;
     });
     const id = await step("create an interview (writes an interview row)", async () => {
-        const res = await api("POST", "/api/interviews", { role: "Backend Engineer", level: "mid", format: "quick" });
+        const res = await api("POST", "/api/interviews", { role: "Backend Engineer", level: "mid", format: "quick", jobDescription: JOB_DESCRIPTION, githubUrl: GITHUB });
         expect(res, 201);
         return res.json.id as string;
     });

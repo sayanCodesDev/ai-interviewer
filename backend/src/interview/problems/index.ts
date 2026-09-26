@@ -191,36 +191,98 @@ export interface SelectionCriteria {
     level: Level;
     /** Topics from the job description, e.g. "graph", "dynamic-programming". Matching problems are preferred. */
     preferredTags?: string[];
+    /** How strongly the candidate's role and work call for each topic. Supersedes preferredTags where present. */
+    tagWeights?: Record<string, number>;
     exclude?: string[];
     /** Makes the choice reproducible per interview. */
     seed: string;
 }
 
+const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
+const rank = (difficulty: Difficulty) => DIFFICULTIES.indexOf(difficulty);
+
+/** The hardest problem a level is ever given, however well it is going. */
+const CEILING: Record<Level, Difficulty> = { intern: "medium", junior: "hard", mid: "hard", senior: "hard", staff: "hard" };
+/** The easiest: senior candidates are not given warm-up problems because the last one went badly. */
+const FLOOR: Record<Level, Difficulty> = { intern: "easy", junior: "easy", mid: "easy", senior: "medium", staff: "medium" };
+
+interface Fit {
+    difficulty: Difficulty;
+    tagWeights: Record<string, number>;
+    /** The problem chosen just before, so a topic is not repeated back to back. */
+    previous?: ProblemDef;
+    chosen: ProblemDef[];
+}
+
+/** How well a problem suits a slot: the right difficulty first, then what the candidate's work calls for, then variety. */
+function fitScore(problem: ProblemDef, { difficulty, tagWeights, previous, chosen }: Fit): number {
+    const gap = Math.abs(rank(problem.difficulty) - rank(difficulty));
+    const difficultyFit = gap === 0 ? 10 : gap === 1 ? 3 : -6;
+    // Each topic counts up to a cap, so a problem matching many weak topics does not beat one matching the main topic well.
+    const relevance = problem.tags.reduce((sum, tag) => sum + Math.min(4, tagWeights[tag] ?? 0), 0) * 1.5;
+    const repeatsTopic = previous && problem.tags[0] === previous.tags[0] ? -4 : 0;
+    const overlaps = chosen.some((other) => other.tags.filter((tag) => problem.tags.includes(tag)).length >= 2) ? -2 : 0;
+    return difficultyFit + relevance + repeatsTopic + overlaps;
+}
+
+function weightsOf({ preferredTags = [], tagWeights }: Pick<SelectionCriteria, "preferredTags" | "tagWeights">): Record<string, number> {
+    if (tagWeights) return tagWeights;
+    return Object.fromEntries(preferredTags.map((tag) => [tag.toLowerCase(), 1.4]));
+}
+
 /**
- * Picks problems that ramp up in difficulty, prefer the topics the job cares about, and don't
- * repeat a topic back to back. Deterministic for a given seed.
+ * Picks problems that ramp up in difficulty, follow the topics the candidate's role and work call for, and don't repeat a
+ * topic back to back. Deterministic for a given seed: the seed only breaks ties between problems that suit equally well.
  */
-export function selectProblems({ count, level, preferredTags = [], exclude = [], seed }: SelectionCriteria): string[] {
+export function selectProblems(criteria: SelectionCriteria): string[] {
+    const { count, level, exclude = [], seed } = criteria;
     const ladder = count === 1 ? [SINGLE_PROBLEM_DIFFICULTY[level]] : LADDERS[level].slice(0, count);
-    const wanted = new Set(preferredTags.map((tag) => tag.toLowerCase()));
+    const tagWeights = weightsOf(criteria);
     const chosen: ProblemDef[] = [];
     const used = new Set(exclude);
 
     for (const [slot, difficulty] of ladder.entries()) {
         const pool = seededShuffle(`${seed}:${slot}`, ALL_PROBLEMS.filter((p) => !used.has(p.key)));
-        const score = (p: ProblemDef) => {
-            const matches = p.tags.filter((tag) => wanted.has(tag)).length;
-            const sameDifficulty = p.difficulty === difficulty ? 10 : 0;
-            const nearDifficulty = Math.abs(["easy", "medium", "hard"].indexOf(p.difficulty) - ["easy", "medium", "hard"].indexOf(difficulty)) === 1 ? 3 : 0;
-            const repeatsTopic = chosen.length > 0 && p.tags[0] === chosen[chosen.length - 1]!.tags[0] ? -4 : 0;
-            return sameDifficulty + nearDifficulty + matches * 2 + repeatsTopic;
-        };
-        const best = pool.reduce<ProblemDef | undefined>((top, p) => (!top || score(p) > score(top) ? p : top), undefined);
+        const fit: Fit = { difficulty, tagWeights, previous: chosen[chosen.length - 1], chosen };
+        // reduce keeps the first of equals, and the pool is shuffled by the seed: that is the tie-break.
+        const best = pool.reduce<ProblemDef | undefined>((top, p) => (!top || fitScore(p, fit) > fitScore(top, fit) ? p : top), undefined);
         if (!best) break;
         chosen.push(best);
         used.add(best.key);
     }
     return chosen.map((p) => p.key);
+}
+
+export type ProblemOutcome = "solved_clean" | "solved_with_help" | "failed" | "moved_on";
+
+/** How the candidate did on a problem, in the three ways that matter for choosing the next one. */
+export function judgeOutcome(input: { passed: boolean; attempts: number; hints: number; movedOn: boolean }): ProblemOutcome {
+    if (input.passed) return input.attempts <= 1 && input.hints === 0 ? "solved_clean" : "solved_with_help";
+    return input.movedOn ? "moved_on" : "failed";
+}
+
+/**
+ * The next problem, chosen for the person in front of the interviewer: harder after a clean solve, the same after a solve that
+ * needed help, easier after one they could not finish. Only the difficulty moves; the topics still follow the job.
+ */
+export function chooseNextProblem(input: {
+    level: Level;
+    previous: ProblemDef;
+    outcome: ProblemOutcome;
+    tagWeights: Record<string, number>;
+    exclude: string[];
+    seed: string;
+}): ProblemDef | undefined {
+    const { level, previous, outcome } = input;
+    let target = rank(previous.difficulty);
+    if (outcome === "solved_clean") target += 1;
+    else if (outcome === "failed" || outcome === "moved_on") target -= 1;
+    target = Math.min(rank(CEILING[level]), Math.max(rank(FLOOR[level]), target));
+
+    const used = new Set(input.exclude);
+    const pool = seededShuffle(input.seed, ALL_PROBLEMS.filter((p) => !used.has(p.key)));
+    const fit: Fit = { difficulty: DIFFICULTIES[target]!, tagWeights: input.tagWeights, previous, chosen: [previous] };
+    return pool.reduce<ProblemDef | undefined>((top, p) => (!top || fitScore(p, fit) > fitScore(top, fit) ? p : top), undefined);
 }
 
 /** Every topic tag in the bank, so the JD analysis can be steered toward tags we can actually serve. */

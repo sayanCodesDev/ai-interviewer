@@ -53,6 +53,8 @@ async function account(label: string) {
 console.log(`Probing ${BASE}`);
 
 // ------------------------------------------------------------------------------------------------
+const JOB_DESCRIPTION = "Backend engineer for a payments platform. Build Go services on PostgreSQL and Kafka, own their reliability and mentor the team.";
+
 section("Transport and headers");
 {
     const res = await call("GET", "/healthz", { origin: null });
@@ -153,7 +155,7 @@ section("Refresh tokens");
 // ------------------------------------------------------------------------------------------------
 section("Other people's data");
 {
-    const made = await call("POST", "/api/interviews", { token: alice.token, body: { role: "Backend Engineer", level: "mid", format: "quick" } });
+    const made = await call("POST", "/api/interviews", { token: alice.token, body: { role: "Backend Engineer", level: "mid", format: "quick", jobDescription: JOB_DESCRIPTION, githubUrl: "octocat" } });
     check("an interview can be created", made.status === 201 && typeof made.body?.id === "string", `${made.status} ${made.text.slice(0, 120)}`);
     const id = made.body?.id as string;
     for (const [method, path] of [["GET", `/api/interviews/${id}`], ["GET", `/api/interviews/${id}/report`], ["DELETE", `/api/interviews/${id}`], ["POST", `/api/interviews/${id}/end`], ["POST", `/api/interviews/${id}/report/retry`]] as const) {
@@ -188,10 +190,10 @@ section("Hostile input");
     check("operator objects in place of strings are refused", objectEmail.status === 400, String(objectEmail.status));
 
     for (const [name, github] of [["a path-traversal username", "../../etc/passwd"], ["a username with a URL and credentials", "https://user:pass@evil.example/x"], ["a username with spaces and shell characters", "octo cat; rm -rf /"]] as const) {
-        const res = await call("POST", "/api/interviews", { token: alice.token, body: { role: "Backend Engineer", level: "mid", format: "quick", githubUrl: github } });
+        const res = await call("POST", "/api/interviews", { token: alice.token, body: { role: "Backend Engineer", level: "mid", format: "quick", jobDescription: JOB_DESCRIPTION, githubUrl: github } });
         check(`GitHub field: ${name} cannot reach a request`, res.status === 201 || res.status === 400, String(res.status));
     }
-    const longJd = await call("POST", "/api/interviews", { token: alice.token, body: { role: "Backend Engineer", jobDescription: "x".repeat(6_001) } });
+    const longJd = await call("POST", "/api/interviews", { token: alice.token, body: { role: "Backend Engineer", githubUrl: "octocat", jobDescription: "x".repeat(6_001) } });
     check("an over-long job description is refused", longJd.status === 400, String(longJd.status));
     const badRole = await call("POST", "/api/interviews", { token: alice.token, body: { role: "Chief Wizard" } });
     check("an unknown role is refused", badRole.status === 400, String(badRole.status));

@@ -10,7 +10,7 @@ export const FAQ = [
     },
     {
         q: "How are the questions chosen?",
-        a: "Paste a job description and, optionally, upload your resume or share your GitHub. The interviewer builds its technical and behavioral questions from the skills the role asks for and the projects you've actually worked on. Without a job description it uses questions written for your role and level.",
+        a: "You paste the job description and give your GitHub profile, and can add your resume. The interviewer picks the coding problems and builds the technical and behavioral questions from the skills the role asks for and the projects you've actually worked on, at your level, and adjusts the next problem to how the last one went.",
     },
     {
         q: "Which programming languages can I use?",

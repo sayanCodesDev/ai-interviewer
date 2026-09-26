@@ -54,12 +54,14 @@ interface EditorPanelProps {
     onClose: () => void;
     /** "sheet" is the full-screen mobile presentation, which also carries the problem statement. */
     layout?: "split" | "sheet";
+    /** The language the candidate works in, as far as their GitHub and resume show. Used unless they have chosen one themselves. */
+    preferredLanguage?: string;
 }
 
-export function EditorPanel({ interviewId, mode, problem, title, prompt, problemNumber, problemTotal, submitResult, submitting, onSubmitCode, onSubmitNotes, onClose, layout = "split" }: EditorPanelProps) {
+export function EditorPanel({ interviewId, mode, problem, title, prompt, problemNumber, problemTotal, submitResult, submitting, onSubmitCode, onSubmitNotes, onClose, layout = "split", preferredLanguage = "javascript" }: EditorPanelProps) {
     const notesMode = mode === "notes";
     const [prefs, updatePrefs] = useEditorPrefs();
-    const [language, setLanguage] = useState<Language>(() => initialLanguage("javascript"));
+    const [language, setLanguage] = useState<Language>(() => initialLanguage(preferredLanguage));
     const draftKey = (lang: string) => `draft:${interviewId}:${problem?.key ?? "notes"}:${lang}`;
     const starter = useCallback((lang: Language) => (notesMode ? "# Design notes\n\n- Requirements\n- Components\n- Data model\n- Scaling and failure\n- Trade-offs\n" : (problem?.starter[lang] ?? "")), [notesMode, problem]);
 

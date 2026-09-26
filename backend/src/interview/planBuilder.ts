@@ -2,6 +2,7 @@ import { FORMAT_PRESETS, LEVEL_INDEX, ROUND_TITLES, roundKey, type Format, type 
 import type { Analysis } from "./jdAnalysis";
 import { getProblemDef, selectProblems, type Level } from "./problems";
 import type { BankQuestion } from "./roleBanks";
+import { relevanceNote } from "./signals";
 
 export interface BuildPlanInput {
     role: string;
@@ -38,11 +39,17 @@ function itemsFor(spec: RoundSpec, key: string, input: BuildPlanInput, usedProbl
                 count: spec.count,
                 level,
                 preferredTags: analysis.jd.codingTags,
+                tagWeights: analysis.signals.tags,
                 exclude: usedProblems,
                 seed: input.seed,
             });
             usedProblems.push(...problems);
-            return problems.map((problemKey, i) => ({ kind: "coding" as const, id: `${key}:${i}`, problemKey }));
+            return problems.map((problemKey, i) => ({
+                kind: "coding" as const,
+                id: `${key}:${i}`,
+                problemKey,
+                why: relevanceNote(getProblemDef(problemKey)?.tags ?? [], analysis.signals) || undefined,
+            }));
         }
 
         case "technical":
@@ -113,6 +120,7 @@ export function buildPlan(input: BuildPlanInput): InterviewPlan {
         analysisSource: input.analysis.source,
         keyterms: input.analysis.jd.keyterms.slice(0, 50),
         brief: input.analysis.brief,
+        selection: { tags: input.analysis.signals.tags, themes: input.analysis.signals.themes, languages: input.analysis.signals.languages, seed: input.seed },
     };
 }
 

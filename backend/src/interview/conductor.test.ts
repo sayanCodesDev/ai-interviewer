@@ -638,6 +638,68 @@ describe("Conductor: moving on only when it is right", () => {
     });
 });
 
+describe("Conductor: the next problem follows how the last one went", () => {
+    /** A two-problem interview whose coding round is reached, with a record of the problems chosen along the way. */
+    function twoProblems(level: "mid" | "junior" | "senior" = "mid") {
+        const rig = makeRig("standard", level);
+        return rig;
+    }
+    const difficultyOf = (key: string) => getProblemDef(key)!.difficulty;
+
+    async function solveFirst(rig: Rig, run: TestRun, times = 1) {
+        await toFirstProblem(rig);
+        const first = problemKey(rig);
+        for (let i = 0; i < times; i++) await rig.speak(rig.conductor.onSubmission({ problemKey: first, language: "python", code: "x", run }));
+        // Answer follow-ups (if any) until the interviewer moves to the second problem.
+        for (let i = 0; i < 12 && rig.events.filter((e) => e.type === "SHOW_CODE_EDITOR").length < 2 && !rig.conductor.isEnded; i++) {
+            const { step, phase } = rig.conductor.position;
+            if (step === "coding" && phase !== "followup") {
+                if (run.status !== "PASSED") await rig.speak(rig.conductor.onCandidate("Honestly I'm stuck, let's move on please."), () => "Of course. [[MOVE_ON]]");
+                else break;
+            } else await rig.speak(rig.conductor.onCandidate(SUBSTANTIAL));
+        }
+        return first;
+    }
+
+    test("after a clean solve the second problem is harder, and the choice is reported so it can be saved", async () => {
+        const rig = twoProblems();
+        const chosen: Array<[string, string]> = [];
+        (rig.conductor as any).options.onProblemChosen = (id: string, key: string) => chosen.push([id, key]);
+        const first = await solveFirst(rig, PASSING);
+        const second = problemKey(rig);
+        assert.notEqual(second, first);
+        assert.equal(difficultyOf(first), "medium", "the planned first problem for a mid-level candidate");
+        assert.equal(difficultyOf(second), "hard", "a clean solve is followed by a harder problem");
+        assert.ok(chosen.length === 0 || chosen[0]![1] === second, "a change from the plan was reported");
+    });
+
+    test("after a problem they could not finish the second is easier", async () => {
+        const rig = twoProblems();
+        const first = await solveFirst(rig, FAILING, 3);
+        const second = problemKey(rig);
+        assert.notEqual(second, first);
+        assert.equal(difficultyOf(second), "easy");
+    });
+
+    test("the plan shown to the interviewer and saved for the report names the problem actually given", async () => {
+        const rig = twoProblems();
+        const first = await solveFirst(rig, PASSING);
+        const second = problemKey(rig);
+        const items = ((rig.conductor as any).plan.rounds as any[]).flatMap((r) => r.items).filter((i) => i.kind === "coding");
+        assert.deepEqual(items.map((i) => i.problemKey), [first, second]);
+        assert.ok(rig.conductor.history.some((u) => u.role === "system" && /Result on .*: solved clean/.test(u.text)));
+        assert.ok(rig.conductor.history.some((u) => u.role === "system" && new RegExp(`Coding problem 2 of 2: "${getProblemDef(second)!.title}"`).test(u.text)));
+    });
+
+    test("the editor opens in the language the candidate works in", async () => {
+        const rig = makeRig("quick");
+        (rig.conductor as any).plan.selection = { tags: {}, themes: [], languages: ["python", "typescript"], seed: "s" };
+        await toFirstProblem(rig);
+        const shown = rig.events.filter((e) => e.type === "SHOW_CODE_EDITOR").pop() as any;
+        assert.equal(shown.language, "python");
+    });
+});
+
 describe("summariseRun", () => {
     test("describes results in words and never includes expected values", () => {
         assert.equal(summariseRun(PASSING), "5 of 5 tests passed.");

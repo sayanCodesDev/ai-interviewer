@@ -2,7 +2,7 @@ import "../../testing/setup";
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { LANGUAGES } from "../../runner";
-import { ALL_PROBLEMS, expectedOutputs, publicView, redactHidden, runAll, runCustom, runExamples, selectProblems, validateProblemDef, KNOWN_TAGS } from "./index";
+import { ALL_PROBLEMS, KNOWN_TAGS, chooseNextProblem, expectedOutputs, getProblemDef, judgeOutcome, publicView, redactHidden, runAll, runCustom, runExamples, selectProblems, validateProblemDef } from "./index";
 import { JS_SOLUTIONS } from "./verify/jsSolutions";
 
 describe("problem bank", () => {
@@ -45,6 +45,72 @@ describe("problem bank", () => {
         const graphish = picks.filter((k) => ALL_PROBLEMS.find((p) => p.key === k)!.tags.includes("graph"));
         assert.ok(graphish.length >= 1, `expected a graph problem in ${picks}`);
         assert.ok(KNOWN_TAGS.includes("graph"));
+    });
+});
+
+describe("choosing problems for the person, not at random", () => {
+    const diff = (key: string) => getProblemDef(key)!.difficulty;
+    const tagsOf = (keys: string[]) => keys.flatMap((k) => getProblemDef(k)!.tags);
+
+    test("a strong pull toward a topic wins over an otherwise equal problem", () => {
+        for (const seed of ["a", "b", "c", "d", "e", "f"]) {
+            const picks = selectProblems({ count: 2, level: "mid", tagWeights: { intervals: 4, sorting: 2 }, seed });
+            assert.ok(tagsOf(picks).includes("intervals"), `${seed}: ${picks}`);
+        }
+        for (const seed of ["a", "b", "c", "d", "e", "f"]) {
+            const picks = selectProblems({ count: 2, level: "mid", tagWeights: { "dynamic-programming": 4 }, seed });
+            assert.ok(tagsOf(picks).includes("dynamic-programming"), `${seed}: ${picks}`);
+        }
+    });
+
+    test("the pull never overrides the level: interns still get easy problems whatever the job description says", () => {
+        const picks = selectProblems({ count: 2, level: "intern", tagWeights: { "dynamic-programming": 4, backtracking: 4, "monotonic-stack": 4 }, seed: "z" });
+        assert.deepEqual(picks.map(diff), ["easy", "easy"]);
+    });
+
+    test("the same interview always gets the same problems, and different interviews vary", () => {
+        const weights = { array: 1 };
+        const one = selectProblems({ count: 3, level: "mid", tagWeights: weights, seed: "i-1" });
+        assert.deepEqual(one, selectProblems({ count: 3, level: "mid", tagWeights: weights, seed: "i-1" }));
+        const different = new Set(Array.from({ length: 12 }, (_, i) => selectProblems({ count: 3, level: "mid", tagWeights: weights, seed: `i-${i}` }).join()));
+        assert.ok(different.size >= 4, `only ${different.size} distinct sets`);
+    });
+
+    test("judging how a problem went", () => {
+        assert.equal(judgeOutcome({ passed: true, attempts: 1, hints: 0, movedOn: false }), "solved_clean");
+        assert.equal(judgeOutcome({ passed: true, attempts: 2, hints: 0, movedOn: false }), "solved_with_help");
+        assert.equal(judgeOutcome({ passed: true, attempts: 1, hints: 1, movedOn: false }), "solved_with_help");
+        assert.equal(judgeOutcome({ passed: false, attempts: 3, hints: 0, movedOn: false }), "failed");
+        assert.equal(judgeOutcome({ passed: false, attempts: 0, hints: 2, movedOn: true }), "moved_on");
+    });
+
+    test("harder after a clean solve, the same after a solve that needed help, easier after one they could not finish", () => {
+        const previous = getProblemDef("longest-substring-without-repeating-characters")!;
+        assert.equal(previous.difficulty, "medium");
+        const next = (outcome: Parameters<typeof judgeOutcome>[0] extends never ? never : "solved_clean" | "solved_with_help" | "failed" | "moved_on", level: "junior" | "mid" | "senior" = "mid") =>
+            chooseNextProblem({ level, previous, outcome, tagWeights: {}, exclude: [previous.key], seed: "s" })!.difficulty;
+        assert.equal(next("solved_clean"), "hard");
+        assert.equal(next("solved_with_help"), "medium");
+        assert.equal(next("failed"), "easy");
+        assert.equal(next("moved_on"), "easy");
+        assert.equal(next("failed", "senior"), "medium", "a senior candidate is not dropped to a warm-up problem");
+    });
+
+    test("interns are never pushed past medium, and nothing is ever repeated", () => {
+        const previous = getProblemDef("three-sum")!;
+        const pick = chooseNextProblem({ level: "intern", previous, outcome: "solved_clean", tagWeights: {}, exclude: [previous.key], seed: "s" })!;
+        assert.notEqual(pick.difficulty, "hard");
+        const all = ALL_PROBLEMS.filter((p) => p.difficulty === "medium").map((p) => p.key);
+        const again = chooseNextProblem({ level: "mid", previous, outcome: "solved_with_help", tagWeights: {}, exclude: all, seed: "s" })!;
+        assert.ok(!all.includes(again.key), "every medium problem was excluded, so a neighbouring difficulty is used instead");
+    });
+
+    test("the next problem still follows the job description", () => {
+        const previous = getProblemDef("two-sum")!;
+        for (const seed of ["a", "b", "c", "d"]) {
+            const pick = chooseNextProblem({ level: "mid", previous, outcome: "solved_clean", tagWeights: { "dynamic-programming": 4 }, exclude: [previous.key], seed })!;
+            assert.ok(pick.tags.includes("dynamic-programming"), `${seed}: ${pick.key}`);
+        }
     });
 });
 

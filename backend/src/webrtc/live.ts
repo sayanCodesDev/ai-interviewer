@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { Prisma } from "../../generated/prisma/client";
+import { prisma } from "../../lib/prisma";
 import { config } from "../config/env";
 import { logger } from "../observability/logger";
 import { clientConcealedPercent, clientLossPercent, codeRuns, firstAudioMs, firstSentenceMs, interviewsFinished, llmErrors, weakConnectionWindows } from "../observability/metrics";
@@ -7,7 +9,7 @@ import { Conductor, type Outcome, type Turn } from "../interview/conductor";
 import { streamReply, type ReplyResult } from "../interview/dialogue";
 import { clientMessageSchema, type EndReason, type ServerEvent } from "../interview/events";
 import { maxCallMinutes, type Format, type InterviewPlan } from "../interview/plan";
-import { getProblemDef, publicView, redactHidden, runAll } from "../interview/problems";
+import { getProblemDef, redactHidden, runAll, warmExpected } from "../interview/problems";
 import { personaPrompt } from "../interview/prompts";
 import { InterviewRecorder } from "../interview/recorder";
 import { VOICES, finishInterview, markStarted } from "../interview/service";
@@ -150,6 +152,7 @@ export class LiveInterview {
             }),
             onUtterance: (utterance) => this.recorder.addTurn(utterance),
             onRoundComplete: (round, transcript) => void this.summariseRound(round.key, round.title, transcript),
+            onProblemChosen: (itemId, problemKey) => void this.saveProblemChoice(itemId, problemKey),
         });
 
         this.tickTimer = setInterval(() => this.tick(), TICK_MS);
@@ -603,6 +606,22 @@ export class LiveInterview {
         if (turn && !this.replyActive) {
             this.abortReply();
             this.enqueue(() => this.perform(turn));
+        }
+    }
+
+    // ------------------------------------------------------------------------------------ problems
+
+    /**
+     * The next problem was chosen to suit how the last one went. The plan is what the report is built from, so it is updated,
+     * and the problem's expected outputs start being computed so the first submission does not wait for them.
+     */
+    private async saveProblemChoice(itemId: string, problemKey: string): Promise<void> {
+        warmExpected([problemKey]);
+        try {
+            await prisma.interview.update({ where: { id: this.id }, data: { plan: this.init.plan as unknown as Prisma.InputJsonValue } });
+            logger.info({ interviewId: this.id, itemId, problemKey }, "The next problem was chosen for how the candidate is doing");
+        } catch (error) {
+            logger.error({ err: error, interviewId: this.id, itemId, problemKey }, "Could not save the chosen problem");
         }
     }
 

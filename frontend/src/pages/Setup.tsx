@@ -45,6 +45,8 @@ const CHECKLIST = ["Find somewhere quiet", "Headphones help the interviewer hear
 // A bare username or any github.com link; the server validates again.
 const GITHUB_PROFILE = /^(https?:\/\/)?(www\.)?(github\.com\/)?[A-Za-z0-9][A-Za-z0-9-]*\/?$/i;
 const MAX_JD = 6000;
+/** Mirrors the server: anything shorter cannot say what a role needs. */
+const MIN_JD = 60;
 const MAX_RESUME_BYTES = 2 * 1024 * 1024;
 
 function RadioCard({ name, value, checked, onChange, title, meta, description }: { name: string; value: string; checked: boolean; onChange: () => void; title: string; meta?: string; description?: string }) {
@@ -109,8 +111,12 @@ export function Setup() {
 
         const next: Record<string, string> = {};
         const trimmed = githubUrl.trim();
-        if (trimmed && !GITHUB_PROFILE.test(trimmed)) next.githubUrl = "Use your profile link, like https://github.com/your-username.";
-        if (jobDescription.length > MAX_JD) next.jobDescription = `The job description is limited to ${MAX_JD.toLocaleString()} characters.`;
+        const jd = jobDescription.trim();
+        if (!trimmed) next.githubUrl = "Add your GitHub profile: the interviewer asks about your real projects.";
+        else if (!GITHUB_PROFILE.test(trimmed)) next.githubUrl = "Use your profile link, like https://github.com/your-username.";
+        if (!jd) next.jobDescription = "Paste the job description: the interview is built from it.";
+        else if (jd.length < MIN_JD) next.jobDescription = `That is too short to be a job description. Paste the whole thing (at least ${MIN_JD} characters) so the questions fit the role.`;
+        else if (jobDescription.length > MAX_JD) next.jobDescription = `The job description is limited to ${MAX_JD.toLocaleString()} characters.`;
         setErrors(next);
         if (Object.keys(next).length > 0) return;
 
@@ -120,8 +126,8 @@ export function Setup() {
         form.set("format", format);
         form.set("voice", voice);
         form.set("accent", accent);
-        if (jobDescription.trim()) form.set("jobDescription", jobDescription.trim());
-        if (trimmed) form.set("githubUrl", trimmed);
+        form.set("jobDescription", jd);
+        form.set("githubUrl", trimmed);
         if (resume) form.set("resume", resume);
 
         setLoading(true);
@@ -199,19 +205,23 @@ export function Setup() {
                         </fieldset>
 
                         <Field
-                            label="Job description (optional)"
+                            label="Job description"
                             htmlFor="jd"
                             error={errors.jobDescription}
-                            hint={`Paste it here and the technical and behavioral questions follow it. ${jobDescription.length.toLocaleString()} / ${MAX_JD.toLocaleString()}`}
+                            hint={`Required. The coding problems, technical questions and follow-ups are chosen from it. ${jobDescription.length.toLocaleString()} / ${MAX_JD.toLocaleString()}`}
                         >
                             {(control) => (
                                 <Textarea
                                     {...control}
                                     name="jobDescription"
                                     rows={6}
+                                    required
                                     placeholder="Paste the role's description, requirements and responsibilities…"
                                     value={jobDescription}
-                                    onChange={(event) => setJobDescription(event.target.value)}
+                                    onChange={(event) => {
+                                        setJobDescription(event.target.value);
+                                        if (errors.jobDescription) setErrors((c) => { const { jobDescription: _j, ...rest } = c; return rest; });
+                                    }}
                                 />
                             )}
                         </Field>
@@ -246,13 +256,14 @@ export function Setup() {
                                 )}
                             </Field>
 
-                            <Field label="GitHub (optional)" htmlFor="github" error={errors.githubUrl} hint="We read your public repositories to ask about real projects.">
+                            <Field label="GitHub profile" htmlFor="github" error={errors.githubUrl} hint="Required. We read your public repositories to ask about real projects.">
                                 {(control) => (
                                     <Input
                                         {...control}
                                         type="text"
                                         name="github"
                                         inputMode="url"
+                                        required
                                         autoComplete="off"
                                         autoCapitalize="none"
                                         spellCheck={false}

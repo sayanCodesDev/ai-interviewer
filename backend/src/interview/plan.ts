@@ -27,6 +27,8 @@ export interface CodingItem {
     kind: "coding";
     id: string;
     problemKey: string;
+    /** What in the role or the candidate's work this problem speaks to ("scheduling and calendars"). Empty when nothing in particular. */
+    why?: string;
 }
 
 export interface DesignItem {
@@ -56,6 +58,16 @@ export interface JdAnalysis {
     behavioralFocus: string[];
 }
 
+/** What was learned about the candidate's work, kept with the plan so later problems can be chosen the same way. */
+export interface PlanSelection {
+    /** How strongly the role and work call for each problem topic. */
+    tags: Record<string, number>;
+    themes: string[];
+    /** The languages the candidate works in that the editor supports, most used first. The editor opens in the first. */
+    languages: string[];
+    seed: string;
+}
+
 export interface InterviewPlan {
     version: 1;
     role: string;
@@ -73,6 +85,7 @@ export interface InterviewPlan {
     keyterms: string[];
     /** The interviewer's brief on the role and the candidate; sent with each turn in place of the full documents. */
     brief?: string;
+    selection?: PlanSelection;
 }
 
 export interface RoundSpec {

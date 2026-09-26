@@ -25,7 +25,7 @@ export function SetupScene() {
                     </div>
                 </div>
                 <div>
-                    <p className="text-[13px] font-medium">GitHub profile (optional)</p>
+                    <p className="text-[13px] font-medium">GitHub profile</p>
                     <div className="mt-2 flex h-11 items-center rounded-md border border-night-line bg-night-raised px-3.5 text-[15px] text-night-foreground/90">
                         https://github.com/ada-lovelace
                     </div>
