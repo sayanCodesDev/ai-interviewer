@@ -582,30 +582,40 @@ describe("Conductor: moving on only when it is right", () => {
         assert.equal(talk.conductor.editorEvent(), null);
     });
 
-    test("a new question the candidate talked over before hearing it is not asked: they were still on the last one", async () => {
+    test("a candidate who starts talking before the new question is out does not lose it: the interviewer is told, and carries on or asks it again", async () => {
         const rig = await atBackground();
         const at = rig.conductor.position.item;
         const turn = rig.conductor.onCandidate(SUBSTANTIAL)!;
         rig.conductor.finishTurn(turn, await streamReply(new FakeLlm("Thanks. [[ADVANCE]]"), rig.conductor.buildMessages(turn), { maxTokens: 100 }));
         const { next } = rig.conductor.commitTransition();
         assert.equal(next?.kind, "ask");
-        assert.notEqual(rig.conductor.position.item, at);
+        const moved = rig.conductor.position.item;
+        assert.notEqual(moved, at);
 
         const outcome = rig.conductor.finishTurn(next!, { text: "Let's talk about", markers: [], interrupted: true, delivered: false, firstSentenceMs: 50 });
-        assert.equal(outcome.rolledBack, true);
-        assert.equal(rig.conductor.position.item, at, "back on the question they were answering");
-        assert.ok(rig.conductor.history.some((u) => u.role === "system" && /stayed on the previous question/.test(u.text)));
+        assert.equal(outcome.next, null);
+        assert.equal(rig.conductor.position.item, moved, "the interview does not rewind: the new question is the current one");
+        assert.ok(rig.conductor.history.some((u) => u.role === "system" && /spoke before the new question was fully asked/.test(u.text)));
+
+        const reply = rig.conductor.onCandidate("Sorry, I just wanted to add one more detail about the retries in my last answer.")!;
+        assert.match(reply.directive, /cut off before you finished asking this question/);
+        assert.deepEqual([...reply.allowedMarkers], [], "the new question has not been answered yet, so it cannot be closed");
+        // It applies once: the reply after that is an ordinary one.
+        await rig.speak(reply, () => "Of course. So, as I was asking, what was the hardest part?");
+        const next2 = rig.conductor.onCandidate(SUBSTANTIAL)!;
+        assert.doesNotMatch(next2.directive, /cut off before you finished asking this question/);
     });
 
-    test("a new question the candidate heard before answering stands", async () => {
+    test("a new question the candidate heard before answering is an ordinary one", async () => {
         const rig = await atBackground();
         const at = rig.conductor.position.item;
         const turn = rig.conductor.onCandidate(SUBSTANTIAL)!;
         rig.conductor.finishTurn(turn, await streamReply(new FakeLlm("Thanks. [[ADVANCE]]"), rig.conductor.buildMessages(turn), { maxTokens: 100 }));
         const { next } = rig.conductor.commitTransition();
-        const outcome = rig.conductor.finishTurn(next!, { text: "Now tell me about your most recent project.", markers: [], interrupted: true, delivered: true, firstSentenceMs: 50 });
-        assert.equal(outcome.rolledBack, undefined);
+        rig.conductor.finishTurn(next!, { text: "Now tell me about your most recent project.", markers: [], interrupted: true, delivered: true, firstSentenceMs: 50 });
         assert.notEqual(rig.conductor.position.item, at);
+        assert.ok(!rig.conductor.history.some((u) => u.role === "system" && /spoke before the new question/.test(u.text)));
+        assert.doesNotMatch(rig.conductor.onCandidate(SUBSTANTIAL)!.directive, /cut off before you finished asking this question/);
     });
 
     test("an interrupted problem introduction still opens the editor and keeps the problem", async () => {
@@ -622,7 +632,7 @@ describe("Conductor: moving on only when it is right", () => {
         }
         assert.ok(present, "reached the problem");
         const outcome = rig.conductor.finishTurn(present!, { text: "Let's move to a coding", markers: [], interrupted: true, delivered: false, firstSentenceMs: 50 });
-        assert.equal(outcome.rolledBack, undefined, "a problem is not taken back");
+        assert.equal(outcome.next, null);
         assert.equal(rig.conductor.position.step, "coding");
     });
 
@@ -828,6 +838,68 @@ describe("Conductor: when the candidate says they do not know", () => {
         const rig = await atBackground();
         const turn = rig.conductor.onCandidate(`${SUBSTANTIAL} I'm not sure whether we should have used a queue there, but it worked out.`)!;
         assert.doesNotMatch(turn.directive, /That is a fair thing to say/);
+    });
+});
+
+describe("Conductor: a submission that settles the problem keeps its promise", () => {
+    async function solved() {
+        const rig = makeRig("quick");
+        await toFirstProblem(rig);
+        const key = problemKey(rig);
+        const review = rig.conductor.onSubmission({ problemKey: key, language: "python", code: "x", run: PASSING })!;
+        return { rig, key, review };
+    }
+
+    test("follow-ups are still due when the review was cut off by the candidate", async () => {
+        const { rig, review } = await solved();
+        const outcome = rig.conductor.finishTurn(review, { text: "That passed all the", markers: [], interrupted: true, delivered: false, firstSentenceMs: 30 });
+        assert.equal(outcome.transition, true, "the question about complexity is still coming");
+        assert.equal(rig.conductor.commitTransition().next?.kind, "followup_ask");
+    });
+
+    test("...or when the model was busy and the review was never written", async () => {
+        const { rig, review } = await solved();
+        const outcome = rig.conductor.finishTurn(review, { text: "Sorry, I'm a bit overloaded right now.", markers: [], interrupted: true, firstSentenceMs: null });
+        assert.equal(outcome.transition, true);
+    });
+
+    test("what they say after it passed is answered as a remark about the solution, and the follow-ups come after", async () => {
+        const { rig, review } = await solved();
+        rig.conductor.finishTurn(review, { text: "That passed", markers: [], interrupted: true, delivered: false, firstSentenceMs: 30 });
+        rig.conductor.cancelTransition();
+        const remark = rig.conductor.onCandidate("Thanks! I think I could have made the lookup a little cleaner, honestly.")!;
+        assert.equal(remark.kind, "coach");
+        assert.match(remark.directive, /They have solved .*every test passed/);
+        assert.match(remark.directive, /do not invite more coding/i);
+        assert.doesNotMatch(remark.directive, /Next hint|You may refer to it/);
+        assert.deepEqual([...remark.allowedMarkers], [], "no hints, no giving up: it is done");
+
+        const outcome = rig.conductor.finishTurn(remark, { text: "It was clean already. Nicely done.", markers: [], interrupted: false, firstSentenceMs: 30 });
+        assert.equal(outcome.transition, true, "and only then the follow-ups");
+        assert.equal(rig.conductor.commitTransition().next?.kind, "followup_ask");
+    });
+
+    test("a failed problem whose approach was explained moves on the same way", async () => {
+        const rig = makeRig("quick");
+        await toFirstProblem(rig);
+        const key = problemKey(rig);
+        let review = rig.conductor.onSubmission({ problemKey: key, language: "python", code: "x", run: FAILING })!;
+        rig.conductor.finishTurn(review, { text: "Not yet.", markers: [], interrupted: false, firstSentenceMs: 1 });
+        review = rig.conductor.onSubmission({ problemKey: key, language: "python", code: "x", run: FAILING })!;
+        rig.conductor.finishTurn(review, { text: "Still not.", markers: [], interrupted: false, firstSentenceMs: 1 });
+        review = rig.conductor.onSubmission({ problemKey: key, language: "python", code: "x", run: FAILING })!;
+        assert.match(review.directive, /explain the correct approach/);
+        const outcome = rig.conductor.finishTurn(review, { text: "Sorry, technical hiccup.", markers: [], interrupted: true, firstSentenceMs: null });
+        assert.equal(outcome.transition, true, "out of attempts: on to the next thing, whatever happened to the explanation");
+    });
+
+    test("while they may still resubmit nothing is due", async () => {
+        const rig = makeRig("quick");
+        await toFirstProblem(rig);
+        const review = rig.conductor.onSubmission({ problemKey: problemKey(rig), language: "python", code: "x", run: FAILING })!;
+        assert.equal(rig.conductor.finishTurn(review, { text: "Not yet.", markers: [], interrupted: true, firstSentenceMs: 1 }).transition, undefined);
+        const chat = rig.conductor.onCandidate("Let me look at the failing cases again.")!;
+        assert.doesNotMatch(chat.directive, /They have solved/);
     });
 });
 
