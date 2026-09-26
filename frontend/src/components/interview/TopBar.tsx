@@ -1,4 +1,4 @@
-import { ScrollText } from "lucide-react";
+import { ScrollText, SignalLow } from "lucide-react";
 
 import { LogoMark } from "@/components/brand/Logo";
 import { formatClock } from "@/hooks/useElapsed";
@@ -27,6 +27,8 @@ interface TopBarProps {
     round: RoundInfo | null;
     /** Opens the running transcript. */
     onOpenTranscript?: () => void;
+    /** "weak" when the browser is having to hide gaps in the interviewer's voice. */
+    connection?: "good" | "weak";
 }
 
 /** Where the interview is: the role, the current part of the loop, and the clock against the planned length. */
@@ -43,7 +45,7 @@ function TranscriptButton({ onClick, className }: { onClick: () => void; classNa
     );
 }
 
-export function TopBar({ role, status, elapsedSeconds, plannedMinutes, round, onOpenTranscript }: TopBarProps) {
+export function TopBar({ role, status, elapsedSeconds, plannedMinutes, round, onOpenTranscript, connection = "good" }: TopBarProps) {
     const over = plannedMinutes ? elapsedSeconds > plannedMinutes * 60 : false;
 
     return (
@@ -64,6 +66,12 @@ export function TopBar({ role, status, elapsedSeconds, plannedMinutes, round, on
                         </span>
                     )}
                 </div>
+                {status === "live" && connection === "weak" && (
+                    <span role="status" title="The audio is arriving unevenly, so the interviewer's voice may break up. A wired connection or wired headphones usually fixes it." className="label-mono flex items-center gap-1.5 text-night-amber">
+                        <SignalLow className="size-3.5" aria-hidden />
+                        Weak connection
+                    </span>
+                )}
                 {onOpenTranscript && <TranscriptButton onClick={onOpenTranscript} className="md:hidden" />}
             </div>
 

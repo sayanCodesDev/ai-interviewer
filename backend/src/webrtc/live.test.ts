@@ -16,6 +16,7 @@ class FakeVoice implements VoiceLike {
     events: any[] = [];
     spoken: string[] = [];
     stops = 0;
+    ducks: boolean[] = [];
     queued = 0;
     candidateSpeaking = false;
     isClosed = false;
@@ -25,6 +26,7 @@ class FakeVoice implements VoiceLike {
     speak(sentence: string) { this.spoken.push(sentence); this.queued = 2_000; }
     endSpeech() {}
     stopSpeech() { this.stops++; this.queued = 0; }
+    duck(active: boolean) { this.ducks.push(active); }
     onFirstAudio(listener: () => void) { listener(); }
     get queuedMs() { return this.queued; }
     playedFraction() { return 0.5; }
@@ -182,6 +184,49 @@ describe("LiveInterview: interruptions", () => {
         assert.ok(!turns[0]!.text.includes("introduce yourself"), "words never spoken are not in the transcript");
     });
 
+    test("a word or two only dips the interviewer's voice; a few words, or a finished utterance, stop it", async () => {
+        const ctx = await setup("quick");
+        const voice = await ctx.connect();
+        voice.queued = 3_000;
+        voice.ducks.length = 0; // (opening the call restores the volume once)
+
+        voice.handlers.onCandidateSpeaking("Hi, I'm", false); // could be a stray noise or a trace of echo
+        assert.equal(voice.stops, 0, "not stopped by two words");
+        assert.deepEqual(voice.ducks, [true], "but turned down at once");
+
+        voice.handlers.onCandidateSpeaking("wait can I ask something", false);
+        assert.ok(voice.stops >= 1, "stopped once it is clear the candidate is talking");
+        assert.equal(voice.ducks[voice.ducks.length - 1], false, "and the volume is restored for the next reply");
+
+        const finished = await setup("quick");
+        const other = await finished.connect();
+        other.queued = 3_000;
+        other.handlers.onCandidateSpeaking("hold on", true);
+        assert.ok(other.stops >= 1, "a finished utterance of any real length stops it");
+    });
+
+    test("the interviewer's own voice heard through the microphone neither interrupts it nor becomes the candidate's answer", async () => {
+        const ctx = await setup("quick");
+        const voice = await ctx.connect();
+        const spokenSoFar = voice.spoken.join(" ");
+        assert.ok(spokenSoFar.length > 20, "the interviewer has said something");
+        voice.queued = 3_000;
+        voice.ducks.length = 0;
+
+        // The recogniser hears the interviewer through the speakers, misspelling a word here and there.
+        const echoed = spokenSoFar.split(" ").slice(0, 8).join(" ").replace(/Sam/, "Sal");
+        voice.handlers.onCandidateSpeaking(echoed, false);
+        voice.handlers.onCandidateSpeaking(echoed, true);
+        voice.handlers.onCandidateTurn(echoed);
+        await ctx.live.idle();
+
+        assert.equal(voice.stops, 0, "not interrupted by its own echo");
+        assert.deepEqual(voice.ducks, [], "not even turned down");
+        assert.equal(voice.of("CAPTION").filter((c) => c.role === "candidate").length, 0, "no caption for the echo");
+        const said = (await prisma.interviewTurn.findMany({ where: { interviewId: ctx.created.id, role: "CANDIDATE" } })).length;
+        assert.equal(said, 0, "the echo was not recorded as an answer");
+    });
+
     test("the interview does not advance past an interrupted question", async () => {
         const ctx = await setup("quick");
         const voice = await ctx.connect();
@@ -257,6 +302,16 @@ describe("LiveInterview: hostile and broken input", () => {
         }
         await live.idle();
         assert.equal(voice.events.length, before, "nothing happened");
+    });
+
+    test("the browser's voice-quality reports are accepted, counted and never disturb the interview", async () => {
+        const { connect, live } = await setup();
+        const voice = await connect();
+        const before = voice.events.length;
+        voice.handlers.onClientMessage(JSON.stringify({ type: "CLIENT_STATS", lossPercent: 0.4, concealedPercent: 0.2, jitterMs: 3, packets: 250 }));
+        voice.handlers.onClientMessage(JSON.stringify({ type: "CLIENT_STATS", lossPercent: 12, concealedPercent: 30, jitterMs: 90, packets: 250 }));
+        await live.idle();
+        assert.equal(voice.events.length, before, "nothing was sent back or changed");
     });
 
     test("typed text works as a candidate turn", async () => {

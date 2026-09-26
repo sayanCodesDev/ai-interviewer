@@ -15,9 +15,11 @@
 export const SAMPLES_PER_FRAME = 960;
 /** One frame of 16-bit stereo PCM. */
 export const FRAME_BYTES = SAMPLES_PER_FRAME * 2 * 2;
+/** Frames per second (one every 20 ms). */
+const FRAMES_PER_SECOND = 50;
 
 /** Roughly 30 seconds of audio, after which the oldest is dropped. */
-const DEFAULT_MAX_BYTES = FRAME_BYTES * 50 * 30;
+const MAX_SECONDS = 30;
 
 export class PcmFrameQueue {
     private readonly chunks: Buffer[] = [];
@@ -25,17 +27,36 @@ export class PcmFrameQueue {
     private headOffset = 0;
     /** A websocket frame can end mid-sample; the stray byte belongs to the next one. */
     private oddByteCarry: Buffer | null = null;
+    private readonly frameBytes: number;
+    private readonly maxBytes: number;
 
-    constructor(private readonly maxBytes: number = DEFAULT_MAX_BYTES) {}
+    /**
+     * @param channels 2 (the default) interleaves the mono input to identical stereo channels; 1 keeps it mono,
+     * which is what the voice call uses: speech needs no second channel and mono encodes at half the cost.
+     */
+    constructor(maxBytes?: number, private readonly channels: 1 | 2 = 2) {
+        this.frameBytes = SAMPLES_PER_FRAME * 2 * channels;
+        this.maxBytes = maxBytes ?? this.frameBytes * FRAMES_PER_SECOND * MAX_SECONDS;
+    }
 
-    /** Unread stereo bytes held in the queue. */
+    /** Unread bytes held in the queue (in this queue's channel layout). */
     get pendingBytes(): number {
         return this.pending;
     }
 
+    /** Milliseconds of audio waiting in the queue, including a last partial frame. */
+    get durationMs(): number {
+        return (this.pending / this.frameBytes) * 20;
+    }
+
     /** Whole frames available to read right now. */
     get availableFrames(): number {
-        return Math.floor(this.pending / FRAME_BYTES);
+        return Math.floor(this.pending / this.frameBytes);
+    }
+
+    /** Bytes in one 20 ms frame. */
+    get bytesPerFrame(): number {
+        return this.frameBytes;
     }
 
     /**
@@ -58,39 +79,62 @@ export class PcmFrameQueue {
         }
         if (usableBytes === 0) return;
 
-        const stereo = Buffer.allocUnsafe(usableBytes * 2);
-        let offset = 0;
-        for (let i = 0; i < usableBytes; i += 2) {
-            const sample = input.readInt16LE(i);
-            stereo.writeInt16LE(sample, offset);     // Left
-            stereo.writeInt16LE(sample, offset + 2); // Right
-            offset += 4;
+        let block: Buffer;
+        if (this.channels === 1) {
+            // Copy: the socket may reuse its buffer after this returns.
+            block = Buffer.from(input.subarray(0, usableBytes));
+        } else {
+            block = Buffer.allocUnsafe(usableBytes * 2);
+            let offset = 0;
+            for (let i = 0; i < usableBytes; i += 2) {
+                const sample = input.readInt16LE(i);
+                block.writeInt16LE(sample, offset);     // Left
+                block.writeInt16LE(sample, offset + 2); // Right
+                offset += 4;
+            }
         }
 
-        this.chunks.push(stereo);
-        this.pending += stereo.length;
+        this.chunks.push(block);
+        this.pending += block.length;
         this.dropOldestIfOverfull();
     }
 
-    /** One 20ms stereo frame, or null on underrun (the pacer then sends silence). */
-    readFrame(): Buffer | null {
-        if (this.pending < FRAME_BYTES) return null;
+    /**
+     * One 20ms frame, or null on underrun (the pacer then sends silence). With `padTail`, a last partial frame
+     * (the end of an utterance rarely lands on a 20 ms boundary) is padded with silence instead of being left behind
+     * to leak into the start of the next utterance.
+     */
+    readFrame(padTail = false): Buffer | null {
+        const size = this.frameBytes;
+        if (this.pending < size) {
+            if (!padTail || this.pending === 0) return null;
+            const tail = Buffer.alloc(size);
+            let written = 0;
+            while (this.pending > 0) {
+                const chunk = this.chunks[0]!;
+                const take = Math.min(chunk.length - this.headOffset, this.pending);
+                chunk.copy(tail, written, this.headOffset, this.headOffset + take);
+                written += take;
+                this.advance(take);
+            }
+            return tail;
+        }
 
         const head = this.chunks[0]!;
 
         // Fast path: the head chunk alone covers a whole frame, no copy needed.
-        if (head.length - this.headOffset >= FRAME_BYTES) {
-            const frame = head.subarray(this.headOffset, this.headOffset + FRAME_BYTES);
-            this.advance(FRAME_BYTES);
+        if (head.length - this.headOffset >= size) {
+            const frame = head.subarray(this.headOffset, this.headOffset + size);
+            this.advance(size);
             return frame;
         }
 
         // Slow path: stitch across chunk boundaries.
-        const frame = Buffer.allocUnsafe(FRAME_BYTES);
+        const frame = Buffer.allocUnsafe(size);
         let written = 0;
-        while (written < FRAME_BYTES) {
+        while (written < size) {
             const chunk = this.chunks[0]!;
-            const take = Math.min(chunk.length - this.headOffset, FRAME_BYTES - written);
+            const take = Math.min(chunk.length - this.headOffset, size - written);
             chunk.copy(frame, written, this.headOffset, this.headOffset + take);
             written += take;
             this.advance(take);
