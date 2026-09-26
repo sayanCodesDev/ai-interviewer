@@ -16,8 +16,13 @@ export interface Turn {
     /** The CURRENT STEP message shown to the model. */
     directive: string;
     roundKey: string;
-    /** Sent to the browser before the interviewer starts speaking (editor opens, round changes). */
+    /** Sent when the interviewer starts speaking, so the screen changes as they announce it (the next part begins). */
     events: ServerEvent[];
+    /**
+     * Sent once the interviewer has finished speaking, or was cut off. The editor opens here: the problem is introduced
+     * first, and the candidate is never left looking at a new problem while the last one is still being discussed.
+     */
+    eventsAfter: ServerEvent[];
     maxTokens: number;
     /** Only these markers are honoured on this turn; the model can't skip steps by emitting others. */
     allowedMarkers: readonly string[];
@@ -45,6 +50,13 @@ export interface Outcome {
     /** Events to send now. */
     events: ServerEvent[];
     ended?: EndReason;
+    /** The candidate talked over a new question before hearing it, so the interview went back to the previous one. */
+    rolledBack?: boolean;
+    /**
+     * The interviewer is ready to move on (next question, next problem, next part). Nothing has moved yet: the caller
+     * gives the candidate a moment to add something, then calls commitTransition(), or cancelTransition() if they spoke.
+     */
+    transition?: boolean;
 }
 
 export interface ConductorOptions {
@@ -59,7 +71,7 @@ export interface ConductorOptions {
 }
 
 type Step =
-    | { t: "talk"; probes: number; brief?: number }
+    | { t: "talk"; probes: number; brief?: number; words: number }
     | {
           t: "coding";
           phase: "present" | "working" | "followup";
@@ -70,9 +82,18 @@ type Step =
           followUpIndex: number;
           probes: number;
           brief?: number;
+          words: number;
       }
     | { t: "design"; probes: number; notes: string }
     | { t: "close" };
+
+/** Where the interview was before a move, so a move the candidate talked over can be undone. */
+interface Snapshot {
+    roundIdx: number;
+    itemIdx: number;
+    step: Step;
+    roundStartedAt: number;
+}
 
 // Small on purpose: notes carry the earlier parts, and every token is charged against a per-minute allowance.
 const MAX_HISTORY_MESSAGES = 12;
@@ -83,6 +104,13 @@ const BRIEF_ANSWER_WORDS = 6;
 /** After this many very short answers in a row to one question, stop pressing and move on. */
 const MAX_BRIEF_IN_A_ROW = 3;
 const HINT_LIMIT = 3;
+/**
+ * A question is not closed until the candidate has said something worth closing on: this many words in total, or a
+ * follow-up has already been asked. Otherwise a one-line first answer ends the discussion of a question before it starts.
+ */
+const MIN_WORDS_BEFORE_MOVING_ON = 25;
+/** How much of a new question must have been heard for the candidate's next words to count as an answer to it. */
+const HEARD_ENOUGH = 0.75;
 
 const speechOnlyTurns = { maxTokens: 200 };
 
@@ -103,8 +131,12 @@ export class Conductor {
     private roundStartedAt: number;
     private roundIdx = 0;
     private itemIdx = 0;
-    private step: Step = { t: "talk", probes: 0 };
+    private step: Step = { t: "talk", probes: 0, words: 0 };
     private ended: EndReason | null = null;
+    /** A move the interviewer has announced but not yet made. Made by commitTransition(), dropped if the candidate speaks first. */
+    private pendingMove: (() => Outcome) | null = null;
+    /** Set when a move is made: where things stood before it, until the first thing said after it has been heard. */
+    private lastMove: Snapshot | null = null;
     private closing = false;
     private lastCandidateWords = 0;
 
@@ -181,8 +213,78 @@ export class Conductor {
         return { type: "ROUND", index: this.roundIdx, total: this.plan.rounds.length, key: this.round.key, title: this.round.title, roundType: this.round.type, minutes: this.round.budgetMinutes };
     }
 
-    private turn(kind: TurnKind, directive: string, events: ServerEvent[] = [], allowedMarkers: readonly string[] = [], maxTokens = speechOnlyTurns.maxTokens): Turn {
-        return { kind, directive, roundKey: this.round.key, events, allowedMarkers, maxTokens };
+    private turn(kind: TurnKind, directive: string, events: ServerEvent[] = [], allowedMarkers: readonly string[] = [], maxTokens = speechOnlyTurns.maxTokens, eventsAfter: ServerEvent[] = []): Turn {
+        return { kind, directive, roundKey: this.round.key, events, eventsAfter, allowedMarkers, maxTokens };
+    }
+
+    // --------------------------------------------------------------------------------- moving on
+
+    /** Announces a move to the next question, problem or part without making it yet. */
+    private defer(move: () => Outcome): Outcome {
+        this.pendingMove = move;
+        return { next: null, events: [], transition: true };
+    }
+
+    /** Whether what the interviewer said last ended in a question, which needs an answer, however short. */
+    get lastInterviewerAskedQuestion(): boolean {
+        for (let i = this.history.length - 1; i >= 0; i--) {
+            const utterance = this.history[i]!;
+            if (utterance.role === "interviewer") return /\?["')\]]?\s*$/.test(utterance.text.trim());
+        }
+        return true;
+    }
+
+    /** Whether the interviewer has said it is moving on and is waiting to do so. */
+    get hasPendingMove(): boolean {
+        return this.pendingMove !== null;
+    }
+
+    /** The candidate spoke (or did something) before the move happened: they are still on the same question. */
+    cancelTransition(): void {
+        this.pendingMove = null;
+    }
+
+    /** Makes the announced move, and returns what to say next. */
+    commitTransition(): Outcome {
+        const move = this.pendingMove;
+        this.pendingMove = null;
+        if (!move || this.ended || this.closing) return { next: null, events: [] };
+        this.lastMove = this.snapshot();
+        return move();
+    }
+
+    private snapshot(): Snapshot {
+        return { roundIdx: this.roundIdx, itemIdx: this.itemIdx, step: structuredClone(this.step), roundStartedAt: this.roundStartedAt };
+    }
+
+    /** Puts the interview back where it was before the last move, and says what to show again. */
+    private rollBack(snapshot: Snapshot): ServerEvent[] {
+        const roundChanged = snapshot.roundIdx !== this.roundIdx;
+        this.roundIdx = snapshot.roundIdx;
+        this.itemIdx = snapshot.itemIdx;
+        this.step = snapshot.step;
+        this.roundStartedAt = snapshot.roundStartedAt;
+        const events: ServerEvent[] = [];
+        if (roundChanged) events.push(this.roundEvent());
+        const editor = this.editorEvent();
+        if (editor) events.push(editor);
+        return events;
+    }
+
+    /** The event that puts the current coding problem or design pad on screen, if one is open. */
+    editorEvent(): ServerEvent | null {
+        if (this.closing) return null;
+        const item = this.item;
+        if (this.step.t === "coding" && item.kind === "coding") {
+            const def = getProblemDef(item.problemKey);
+            if (!def) return null;
+            const number = this.problemNumber(item.id);
+            return { type: "SHOW_CODE_EDITOR", mode: "code", problemNumber: number, problemTotal: this.totalProblems, problem: publicView(def), title: def.title, question: def.statement, language: "javascript" };
+        }
+        if (this.step.t === "design" && item.kind === "design") {
+            return { type: "SHOW_CODE_EDITOR", mode: "notes", problemNumber: 1, problemTotal: 1, title: item.title, question: item.prompt, language: "markdown" };
+        }
+        return null;
     }
 
     // -------------------------------------------------------------------------------- transcript
@@ -234,7 +336,7 @@ export class Conductor {
     /** The interviewer speaks first. */
     begin(): Turn {
         const item = this.item as TalkItem;
-        this.step = { t: "talk", probes: 0 };
+        this.step = { t: "talk", probes: 0, words: 0 };
         this.recordSystem(`Part 1 of ${this.plan.rounds.length}: ${this.round.title}`);
         return this.turn("opening", directives.opening({ prompt: item.prompt, candidateName: this.options.candidateName, time: this.time }), [this.roundEvent()]);
     }
@@ -244,21 +346,26 @@ export class Conductor {
     /** The candidate said something (spoken or typed). */
     onCandidate(text: string): Turn | null {
         if (this.ended || this.closing) return null;
+        // Anything the candidate says means they are still talking about the current question: a move the interviewer
+        // had announced is off, and the interviewer answers what they just said.
+        this.pendingMove = null;
         this.record("candidate", text);
         this.lastCandidateWords = words(text);
         const step = this.step;
 
         switch (step.t) {
-            case "talk":
+            case "talk": {
+                step.words += this.lastCandidateWords;
                 if (this.round.type === "wrapup") {
                     return this.turn("respond", directives.candidateQuestions({ probesUsed: step.probes, maxProbes: (this.item as TalkItem).maxProbes, time: this.time }), [], ["ADVANCE"]);
                 }
-                return this.turn("respond", directives.respond(this.talkView(this.item as TalkItem, step.probes), ...this.briefness(step)), [], ["ADVANCE"]);
+                return this.respondTurn(this.talkView(this.item as TalkItem, step.probes), step);
+            }
 
             case "coding": {
                 if (step.phase === "followup") {
-                    const followUp = step.followUps[step.followUpIndex]!;
-                    return this.turn("respond", directives.respond(this.followUpView(followUp, step), ...this.briefness(step)), [], ["ADVANCE"]);
+                    step.words += this.lastCandidateWords;
+                    return this.respondTurn(this.followUpView(step.followUps[step.followUpIndex]!, step), step);
                 }
                 const def = this.problem();
                 return this.turn("coach", directives.coach({
@@ -288,6 +395,7 @@ export class Conductor {
     onSubmission(sub: SubmissionSummary): Turn | null {
         const step = this.step;
         if (this.ended || this.closing || step.t !== "coding" || (this.item as CodingItem).problemKey !== sub.problemKey) return null;
+        this.pendingMove = null;
         // Once the problem is solved and the follow-up questions have begun, further submissions are recorded but not reviewed.
         if (step.phase === "followup") return null;
 
@@ -315,6 +423,7 @@ export class Conductor {
     onNotes(text: string): Turn | null {
         const step = this.step;
         if (this.ended || this.closing || step.t !== "design") return null;
+        this.pendingMove = null;
         step.notes = sanitizeUntrusted(text, 3_000);
         this.record("candidate", `[Shared design notes: ${step.notes.slice(0, 1_500)}]`);
         const d = this.item as DesignItem;
@@ -348,6 +457,7 @@ export class Conductor {
     /** The call dropped and came back. */
     onReconnect(): Turn | null {
         if (this.ended || this.closing) return null;
+        this.pendingMove = null;
         const step = this.step;
         let where = "";
         if (step.t === "coding" && step.phase !== "followup") where = "remind them the problem is still open in the editor and invite them to continue.";
@@ -366,10 +476,24 @@ export class Conductor {
 
     // ----------------------------------------------------------------------------- after a reply
 
-    /** Applies what the interviewer just said: interpret markers, move the interview along. */
+    /**
+     * Applies what the interviewer just said: interpret markers, and decide whether to move on. Called once the words
+     * have been heard (or the candidate cut in), so the interview never runs ahead of what the candidate has actually heard.
+     * A move to the next question is announced, not made: see commitTransition().
+     */
     finishTurn(turn: Turn, reply: ReplyResult): Outcome {
         const none: Outcome = { next: null, events: [] };
         this.record("interviewer", reply.text, reply.interrupted);
+
+        // The move that led to this turn, if it was the first thing said after it. If the candidate talked over the new
+        // question before hearing it, they were still on the previous one: put it back and let them carry on.
+        const move = this.lastMove;
+        this.lastMove = null;
+        if (move && reply.interrupted && !reply.delivered && (turn.kind === "ask" || turn.kind === "followup_ask")) {
+            this.recordSystem("The candidate spoke before the next question was fully asked, so the interview stayed on the previous question.");
+            return { next: null, events: this.rollBack(move), rolledBack: true };
+        }
+
         // The closing is always the last thing said, whether or not the model remembered its marker, and it ends the
         // interview even if the candidate spoke over it. Everything else about the conversation is frozen once the
         // closing starts, so "no result" here would leave the call open forever.
@@ -394,7 +518,7 @@ export class Conductor {
             case "respond": {
                 if (step.t === "talk") {
                     const done = markers.includes("ADVANCE") || step.probes >= (this.item as TalkItem).maxProbes || (step.brief ?? 0) >= MAX_BRIEF_IN_A_ROW;
-                    if (done) return this.advance(true);
+                    if (done) return this.defer(() => this.advance(true));
                     if (this.lastCandidateWords >= BRIEF_ANSWER_WORDS) step.probes++;
                     return none;
                 }
@@ -405,7 +529,7 @@ export class Conductor {
                         if (this.lastCandidateWords >= BRIEF_ANSWER_WORDS) step.probes++;
                         return none;
                     }
-                    return this.nextFollowUpOrAdvance(step);
+                    return this.defer(() => this.nextFollowUpOrAdvance(step));
                 }
                 return none;
             }
@@ -413,7 +537,7 @@ export class Conductor {
             case "design_respond": {
                 if (step.t !== "design") return none;
                 const done = markers.includes("ADVANCE") || step.probes >= (this.item as DesignItem).maxProbes;
-                if (done) return this.advance(true);
+                if (done) return this.defer(() => this.advance(true));
                 step.probes++;
                 return none;
             }
@@ -435,15 +559,13 @@ export class Conductor {
             case "review": {
                 if (step.t !== "coding") return none;
                 if (step.pendingOutcome === "retry") return none;
-                if (step.pendingOutcome === "passed" && this.plan.codingFollowUps > 0) return this.beginFollowUps(step);
-                return this.advance(false);
+                if (step.pendingOutcome === "passed" && this.plan.codingFollowUps > 0) return this.defer(() => this.beginFollowUps(step));
+                return this.defer(() => this.advance(false));
             }
 
             case "explain":
-                return this.advance(false);
-
             case "force_advance":
-                return this.advance(false);
+                return this.defer(() => this.advance(false));
 
             default:
                 return none;
@@ -468,6 +590,7 @@ export class Conductor {
         step.followUpIndex += 1;
         step.probes = 0;
         step.brief = 0;
+        step.words = 0;
         const next = step.followUps[step.followUpIndex];
         if (!next) return this.advance(true);
         const def = this.problem();
@@ -491,10 +614,9 @@ export class Conductor {
         return spent > this.round.budgetMinutes * limit;
     }
 
-    /** Moves to the next item (or round), closing the editor if it was open. */
+    /** Moves to the next item (or round). The editor, if it was open, is closed as the next thing starts to be said. */
     private advance(justAcknowledged: boolean): Outcome {
-        const events: ServerEvent[] = [];
-        if (this.step.t === "coding" || this.step.t === "design") events.push({ type: "HIDE_CODE_EDITOR" });
+        const hideEditor: ServerEvent[] = this.step.t === "coding" || this.step.t === "design" ? [{ type: "HIDE_CODE_EDITOR" }] : [];
 
         this.itemIdx += 1;
         let roundChanged = false;
@@ -521,9 +643,9 @@ export class Conductor {
 
         if (this.roundIdx >= this.plan.rounds.length) {
             this.ended = "completed";
-            return { next: null, events, ended: "completed" };
+            return { next: null, events: hideEditor, ended: "completed" };
         }
-        return { next: this.startItem(roundChanged, justAcknowledged), events };
+        return { next: this.startItem(roundChanged, justAcknowledged, hideEditor), events: [] };
     }
 
     private completeRound(): void {
@@ -531,46 +653,40 @@ export class Conductor {
         this.options.onRoundComplete?.(this.round, this.history.filter((u) => u.roundKey === key));
     }
 
-    private startItem(roundChanged: boolean, justAcknowledged: boolean): Turn {
+    private startItem(roundChanged: boolean, justAcknowledged: boolean, leading: ServerEvent[] = []): Turn {
         const round = this.round;
         const item = this.item;
         const first = this.itemIdx === 0;
-        const events: ServerEvent[] = roundChanged ? [this.roundEvent()] : [];
+        // Seen as the interviewer starts to speak: the editor closes and the part changes as the next thing is announced.
+        const events: ServerEvent[] = [...leading, ...(roundChanged ? [this.roundEvent()] : [])];
         if (roundChanged) this.recordSystem(`Part ${this.roundIdx + 1} of ${this.plan.rounds.length}: ${round.title}`);
 
         if (item.kind === "coding") {
             const def = getProblemDef(item.problemKey)!;
-            this.step = { t: "coding", phase: "present", attempt: 0, hints: 0, pendingOutcome: null, followUps: [], followUpIndex: -1, probes: 0 };
+            this.step = { t: "coding", phase: "present", attempt: 0, hints: 0, pendingOutcome: null, followUps: [], followUpIndex: -1, probes: 0, words: 0 };
             const number = this.problemNumber(item.id);
             this.recordSystem(`Coding problem ${number} of ${this.totalProblems}: "${def.title}"`);
-            events.push({
-                type: "SHOW_CODE_EDITOR",
-                mode: "code",
-                problemNumber: number,
-                problemTotal: this.totalProblems,
-                problem: publicView(def),
-                title: def.title,
-                question: def.statement,
-                language: "javascript",
-            });
-            return this.turn("present", directives.presentProblem({ number, total: this.totalProblems, title: def.title, difficulty: def.difficulty, statement: def.statement, firstProblem: number === 1, time: this.time }), events, [], 260);
+            // The editor opens once the problem has been introduced aloud, not before the interviewer has said a word about it.
+            const editor = this.editorEvent();
+            return this.turn("present", directives.presentProblem({ number, total: this.totalProblems, title: def.title, difficulty: def.difficulty, statement: def.statement, firstProblem: number === 1, time: this.time }), events, [], 260, editor ? [editor] : []);
         }
 
         if (item.kind === "design") {
             this.step = { t: "design", probes: 0, notes: "" };
-            events.push({ type: "SHOW_CODE_EDITOR", mode: "notes", problemNumber: 1, problemTotal: 1, title: item.title, question: item.prompt, language: "markdown" });
-            return this.turn("design_ask", directives.designAsk({ title: item.title, prompt: item.prompt, lookFor: item.lookFor, firstInRound: first, time: this.time }), events);
+            const pad = this.editorEvent();
+            return this.turn("design_ask", directives.designAsk({ title: item.title, prompt: item.prompt, lookFor: item.lookFor, firstInRound: first, time: this.time }), events, [], speechOnlyTurns.maxTokens, pad ? [pad] : []);
         }
 
         // A talk item. The last item of the wrap-up is the closing.
         if (round.type === "wrapup" && this.itemIdx === round.items.length - 1) return this.beginClosing(item.prompt, events);
 
-        this.step = { t: "talk", probes: 0 };
+        this.step = { t: "talk", probes: 0, words: 0 };
         return this.turn("ask", directives.ask(this.talkView(item, 0, first), justAcknowledged), events);
     }
 
     private beginClosing(prompt: string, events: ServerEvent[] = []): Turn {
         this.closing = true;
+        this.pendingMove = null;
         const hideEditor: ServerEvent[] = this.step.t === "coding" || this.step.t === "design" ? [{ type: "HIDE_CODE_EDITOR" }] : [];
         this.step = { t: "close" };
         return this.turn("close", directives.close({ prompt, time: this.time }), [...hideEditor, ...events], ["END"], 220);
@@ -580,6 +696,15 @@ export class Conductor {
 
     private problem(): ProblemDef {
         return getProblemDef((this.item as CodingItem).problemKey)!;
+    }
+
+    /** The reply to something the candidate said about a question. May end the question only once they have said enough. */
+    private respondTurn(view: TalkView, step: Extract<Step, { words: number }>): Turn {
+        const [brief, moveOn] = this.briefness(step);
+        const canProbe = view.probesUsed < view.maxProbes && !moveOn;
+        // Closing a question on the strength of a sentence or two is how an interview feels like a form being filled in.
+        const mayMoveOn = !canProbe || step.words >= MIN_WORDS_BEFORE_MOVING_ON || step.probes >= 1;
+        return this.turn("respond", directives.respond(view, brief, moveOn, mayMoveOn), [], mayMoveOn ? ["ADVANCE"] : []);
     }
 
     /**

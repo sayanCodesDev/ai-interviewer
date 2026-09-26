@@ -82,6 +82,11 @@ export class SpeechPlayout {
         return this.queue.durationMs;
     }
 
+    /** Speech is in progress: audio is being held, played, or still expected from the synthesiser. */
+    get active(): boolean {
+        return this.phase !== "idle" || this.more || this.queue.durationMs > 0;
+    }
+
     /**
      * About how much speech a piece of text will make (the caller estimates from its length). Lets the buffer be sized
      * to the work still to come rather than to a fixed guess.

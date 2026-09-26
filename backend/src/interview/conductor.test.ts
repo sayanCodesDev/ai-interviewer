@@ -61,8 +61,13 @@ function makeRig(format: Format = "quick", level: "junior" | "mid" | "senior" = 
                 events.push(...turn.events);
                 const llm = new FakeLlm(reply(turn));
                 const result = await streamReply(llm, conductor.buildMessages(turn), { maxTokens: turn.maxTokens });
-                const outcome = conductor.finishTurn(turn, result);
-                events.push(...outcome.events);
+                let outcome = conductor.finishTurn(turn, result);
+                events.push(...turn.eventsAfter, ...outcome.events);
+                // The interviewer announced it is moving on; here the candidate says nothing in the pause, so it does.
+                if (outcome.transition) {
+                    outcome = conductor.commitTransition();
+                    events.push(...outcome.events);
+                }
                 turn = outcome.next;
             }
         },
@@ -235,11 +240,12 @@ describe("Conductor: the closing", () => {
         let turn: Turn | null = rig.conductor.begin();
         let openProblem = "";
         for (let guard = 0; guard < 120 && turn; guard++) {
-            for (const event of turn.events) if (event.type === "SHOW_CODE_EDITOR" && event.mode === "code" && event.problem) openProblem = event.problem.key;
+            for (const event of [...turn.events, ...turn.eventsAfter]) if (event.type === "SHOW_CODE_EDITOR" && event.mode === "code" && event.problem) openProblem = event.problem.key;
             if (turn.kind === "close") return turn;
             const advance = /may not ask any more follow-ups|That is enough questions|end your reply with \[\[ADVANCE\]\]/i.test(turn.directive) && !/EITHER/.test(turn.directive);
             const result = await streamReply(new FakeLlm(advance ? "Thanks, that covers it. [[ADVANCE]]" : "Interesting. Can you say more? "), rig.conductor.buildMessages(turn), { maxTokens: turn.maxTokens });
-            const outcome = rig.conductor.finishTurn(turn, result);
+            let outcome = rig.conductor.finishTurn(turn, result);
+            if (outcome.transition) outcome = rig.conductor.commitTransition();
             turn = outcome.next;
             if (!turn && !rig.conductor.isEnded) {
                 const { step, phase } = rig.conductor.position;
@@ -375,7 +381,7 @@ describe("Conductor: time", () => {
         const rig = makeRig("standard");
         await rig.speak(rig.conductor.begin());
         rig.clock.now += 41 * 60_000; // 4 of 45 minutes left, wrap-up budget is 3
-        await rig.speak(rig.conductor.onCandidate("I'm Sam, a backend engineer with five years of experience in Go."), () => "Thanks. [[ADVANCE]]");
+        await rig.speak(rig.conductor.onCandidate("I'm Sam, a backend engineer with five years of experience in Go and Postgres, mostly building payment services, and lately I have been leading a small team on our platform."), () => "Thanks. [[ADVANCE]]");
         assert.ok(rig.conductor.position.round.endsWith("wrapup") || rig.conductor.position.closing, rig.conductor.position.round);
         assert.ok(!rig.events.some((e) => e.type === "SHOW_CODE_EDITOR"), "no coding problem is started with four minutes left");
     });
@@ -383,10 +389,10 @@ describe("Conductor: time", () => {
     test("a part that overruns its budget is cut short", async () => {
         const rig = makeRig("standard");
         await rig.speak(rig.conductor.begin());
-        await rig.speak(rig.conductor.onCandidate("I'm Sam, a backend engineer with five years of experience in Go."), () => "Nice. [[ADVANCE]]");
+        await rig.speak(rig.conductor.onCandidate("I'm Sam, a backend engineer with five years of experience in Go and Postgres, mostly building payment services, and lately I have been leading a small team on our platform."), () => "Nice. [[ADVANCE]]");
         assert.equal(rig.conductor.position.round, "2-background");
         rig.clock.now += 20 * 60_000; // budget is 6 minutes
-        await rig.speak(rig.conductor.onCandidate("A detailed answer about my most recent project and what I learned."), () => "Thanks. [[ADVANCE]]");
+        await rig.speak(rig.conductor.onCandidate("A detailed answer about my most recent project, the payment ledger I built, the trade-offs I made around consistency, and what I learned from running it in production for two years."), () => "Thanks. [[ADVANCE]]");
         assert.notEqual(rig.conductor.position.round, "2-background");
     });
 
@@ -470,6 +476,165 @@ describe("Conductor: session facts in the transcript", () => {
         for (const message of rig.conductor.buildMessages(turn).slice(1, -1)) {
             assert.ok(!/^Part \d of/.test(message.content) && !/^Hint \d/.test(message.content), message.content);
         }
+    });
+});
+
+const SUBSTANTIAL = "I built the ledger service in Go with Postgres, and the hardest part was keeping balances consistent under concurrent writes, so we used row locks and idempotency keys to make retries safe.";
+
+describe("Conductor: moving on only when it is right", () => {
+    /** Runs the interview to the first background question, with the introduction properly answered. */
+    async function atBackground() {
+        const rig = makeRig("quick");
+        await rig.speak(rig.conductor.begin());
+        await rig.speak(rig.conductor.onCandidate(SUBSTANTIAL));
+        await rig.speak(rig.conductor.onCandidate(SUBSTANTIAL));
+        assert.match(rig.conductor.position.round, /background/);
+        return rig;
+    }
+
+    test("saying it is moving on does not move: nothing changes until the move is made", async () => {
+        const rig = await atBackground();
+        const at = rig.conductor.position.item;
+        const turn = rig.conductor.onCandidate(SUBSTANTIAL)!;
+        const result = await streamReply(new FakeLlm("Thanks, that covers it. [[ADVANCE]]"), rig.conductor.buildMessages(turn), { maxTokens: 100 });
+        const outcome = rig.conductor.finishTurn(turn, result);
+
+        assert.equal(outcome.transition, true);
+        assert.equal(outcome.next, null);
+        assert.equal(rig.conductor.position.item, at, "still on the same question while the candidate has a moment to add something");
+
+        const moved = rig.conductor.commitTransition();
+        assert.equal(moved.next?.kind, "ask");
+        assert.notEqual(rig.conductor.position.item, at);
+    });
+
+    test("if the candidate speaks in the pause the move is off, and they are answered where they are", async () => {
+        const rig = await atBackground();
+        const at = rig.conductor.position.item;
+        const turn = rig.conductor.onCandidate(SUBSTANTIAL)!;
+        rig.conductor.finishTurn(turn, await streamReply(new FakeLlm("Thanks, that covers it. [[ADVANCE]]"), rig.conductor.buildMessages(turn), { maxTokens: 100 }));
+        assert.equal(rig.conductor.hasPendingMove, true);
+
+        const followUp = rig.conductor.onCandidate("Oh, and one more thing about the retries that I should have mentioned.")!;
+        assert.equal(rig.conductor.hasPendingMove, false);
+        assert.equal(followUp.kind, "respond");
+        assert.equal(rig.conductor.position.item, at);
+        assert.equal(rig.conductor.commitTransition().next, null, "a move that was called off cannot be made afterwards");
+    });
+
+    test("a submission or reconnect in the pause also calls the move off", async () => {
+        const rig = await atBackground();
+        const turn = rig.conductor.onCandidate(SUBSTANTIAL)!;
+        rig.conductor.finishTurn(turn, await streamReply(new FakeLlm("Thanks. [[ADVANCE]]"), rig.conductor.buildMessages(turn), { maxTokens: 100 }));
+        assert.equal(rig.conductor.hasPendingMove, true);
+        rig.conductor.onReconnect();
+        assert.equal(rig.conductor.hasPendingMove, false);
+    });
+
+    test("a question is not closed on a sentence or two", async () => {
+        const rig = makeRig("quick");
+        await rig.speak(rig.conductor.begin());
+        const turn = rig.conductor.onCandidate("I'm Sam, a backend engineer.")!;
+        assert.match(turn.directive, /do NOT move on/);
+        assert.deepEqual([...turn.allowedMarkers], [], "the model cannot end the question yet");
+
+        // Even if it tries, nothing moves.
+        const outcome = rig.conductor.finishTurn(turn, await streamReply(new FakeLlm("Great. [[ADVANCE]]"), rig.conductor.buildMessages(turn), { maxTokens: 100 }));
+        assert.equal(outcome.transition, undefined);
+        assert.equal(rig.conductor.position.round, "1-intro");
+    });
+
+    test("after a real answer, or a follow-up, the model may close the question", async () => {
+        const rig = makeRig("quick");
+        await rig.speak(rig.conductor.begin());
+        const turn = rig.conductor.onCandidate(SUBSTANTIAL)!;
+        assert.deepEqual([...turn.allowedMarkers], ["ADVANCE"]);
+    });
+
+    test("the problem is introduced before the editor opens, and the editor closes as the next thing is said", async () => {
+        const rig = makeRig("quick");
+        await toFirstProblem(rig);
+        const present = rig.turns.find((t) => t.kind === "present")!;
+        assert.ok(!present.events.some((e) => e.type === "SHOW_CODE_EDITOR"), "not before the interviewer has said a word about it");
+        assert.ok(present.eventsAfter.some((e) => e.type === "SHOW_CODE_EDITOR"), "after it has been introduced");
+        assert.ok(present.events.some((e) => e.type === "ROUND"), "the part changes as it is announced");
+
+        // Solve it and answer the follow-ups: the editor is closed by the events of what is said next, never by the move itself.
+        await rig.speak(rig.conductor.onSubmission({ problemKey: problemKey(rig), language: "python", code: "x", run: PASSING }));
+        const before = rig.turns.length;
+        for (let i = 0; i < 10 && !rig.turns.slice(before).some((t) => t.events.some((e) => e.type === "HIDE_CODE_EDITOR")); i++) {
+            await rig.speak(rig.conductor.onCandidate(SUBSTANTIAL));
+        }
+        const later = rig.turns.slice(before);
+        const hiding = later.find((t) => t.events.some((e) => e.type === "HIDE_CODE_EDITOR"));
+        assert.ok(hiding, "the editor closes with the first thing said after the problem");
+        assert.notEqual(hiding!.kind, "respond", "and not while the last answer is still being acknowledged");
+    });
+
+    test("the current problem can be put back on screen", async () => {
+        const rig = makeRig("quick");
+        await toFirstProblem(rig);
+        const event = rig.conductor.editorEvent() as any;
+        assert.equal(event.type, "SHOW_CODE_EDITOR");
+        assert.equal(event.problem.key, problemKey(rig));
+        const talk = makeRig("quick");
+        await talk.speak(talk.conductor.begin());
+        assert.equal(talk.conductor.editorEvent(), null);
+    });
+
+    test("a new question the candidate talked over before hearing it is not asked: they were still on the last one", async () => {
+        const rig = await atBackground();
+        const at = rig.conductor.position.item;
+        const turn = rig.conductor.onCandidate(SUBSTANTIAL)!;
+        rig.conductor.finishTurn(turn, await streamReply(new FakeLlm("Thanks. [[ADVANCE]]"), rig.conductor.buildMessages(turn), { maxTokens: 100 }));
+        const { next } = rig.conductor.commitTransition();
+        assert.equal(next?.kind, "ask");
+        assert.notEqual(rig.conductor.position.item, at);
+
+        const outcome = rig.conductor.finishTurn(next!, { text: "Let's talk about", markers: [], interrupted: true, delivered: false, firstSentenceMs: 50 });
+        assert.equal(outcome.rolledBack, true);
+        assert.equal(rig.conductor.position.item, at, "back on the question they were answering");
+        assert.ok(rig.conductor.history.some((u) => u.role === "system" && /stayed on the previous question/.test(u.text)));
+    });
+
+    test("a new question the candidate heard before answering stands", async () => {
+        const rig = await atBackground();
+        const at = rig.conductor.position.item;
+        const turn = rig.conductor.onCandidate(SUBSTANTIAL)!;
+        rig.conductor.finishTurn(turn, await streamReply(new FakeLlm("Thanks. [[ADVANCE]]"), rig.conductor.buildMessages(turn), { maxTokens: 100 }));
+        const { next } = rig.conductor.commitTransition();
+        const outcome = rig.conductor.finishTurn(next!, { text: "Now tell me about your most recent project.", markers: [], interrupted: true, delivered: true, firstSentenceMs: 50 });
+        assert.equal(outcome.rolledBack, undefined);
+        assert.notEqual(rig.conductor.position.item, at);
+    });
+
+    test("an interrupted problem introduction still opens the editor and keeps the problem", async () => {
+        const rig = makeRig("quick");
+        await rig.speak(rig.conductor.begin());
+        await intoBackground(rig);
+        let present: Turn | null = null;
+        for (let i = 0; i < 12 && !present; i++) {
+            const turn = rig.conductor.onCandidate(SUBSTANTIAL)!;
+            let outcome = rig.conductor.finishTurn(turn, await streamReply(new FakeLlm("Thanks. [[ADVANCE]]"), rig.conductor.buildMessages(turn), { maxTokens: 100 }));
+            if (outcome.transition) outcome = rig.conductor.commitTransition();
+            if (outcome.next?.kind === "present") present = outcome.next;
+            else if (outcome.next) await rig.speak(outcome.next);
+        }
+        assert.ok(present, "reached the problem");
+        const outcome = rig.conductor.finishTurn(present!, { text: "Let's move to a coding", markers: [], interrupted: true, delivered: false, firstSentenceMs: 50 });
+        assert.equal(outcome.rolledBack, undefined, "a problem is not taken back");
+        assert.equal(rig.conductor.position.step, "coding");
+    });
+
+    test("whether the interviewer just asked something", async () => {
+        const rig = makeRig("quick");
+        assert.equal(rig.conductor.lastInterviewerAskedQuestion, true, "nothing said yet");
+        const opening = rig.conductor.begin();
+        rig.conductor.finishTurn(opening, { text: "Hello Sam. Could you introduce yourself?", markers: [], interrupted: false, firstSentenceMs: 1 });
+        assert.equal(rig.conductor.lastInterviewerAskedQuestion, true);
+        const turn = rig.conductor.onCandidate(SUBSTANTIAL)!;
+        rig.conductor.finishTurn(turn, { text: "Got it, thanks for that.", markers: [], interrupted: false, firstSentenceMs: 1 });
+        assert.equal(rig.conductor.lastInterviewerAskedQuestion, false);
     });
 });
 

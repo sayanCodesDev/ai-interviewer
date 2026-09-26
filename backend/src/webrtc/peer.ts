@@ -51,6 +51,8 @@ export interface PeerHandlers {
     onChannelOpen: () => void;
     /** The connection ended or failed. */
     onClosed: (reason: string) => void;
+    /** The first word of speech is now being played (after any smoothing pre-roll). */
+    onSpeechStart?: () => void;
 }
 
 /**
@@ -84,7 +86,10 @@ export class AudioPeer {
         this.encoder = new OpusScript(TARGET_SAMPLE_RATE, TARGET_CHANNELS, OpusScript.Application.VOIP);
         this.tuneEncoder(this.encoder);
         this.playout = new SpeechPlayout(new PcmFrameQueue(undefined, TARGET_CHANNELS), { ...DEFAULT_PLAYOUT, preRollMs: config.voicePreRollMs, resumeMs: config.voiceResumeMs, maxLeadMs: config.voiceMaxLeadMs }, {
-            onStart: (waited) => speechStartWaitMs.observe(waited),
+            onStart: (waited) => {
+                speechStartWaitMs.observe(waited);
+                this.handlers.onSpeechStart?.();
+            },
             onGap: (gap) => {
                 speechGapMs.observe(gap);
                 logger.debug({ gapMs: gap }, "Speech ran dry and resumed");
@@ -176,6 +181,11 @@ export class AudioPeer {
     /** Milliseconds of speech waiting to be heard. */
     get queuedMs(): number {
         return this.playout.queuedMs;
+    }
+
+    /** Whether the interviewer is speaking, or about to: audio is queued, playing, or still being made. */
+    get speechActive(): boolean {
+        return this.playout.active;
     }
 
     private tuneEncoder(encoder: OpusScript): void {

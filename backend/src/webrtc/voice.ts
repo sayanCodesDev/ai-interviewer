@@ -42,6 +42,8 @@ export interface VoiceLike {
     readonly isClosed: boolean;
     /** Dip the interviewer's voice while the candidate may be interrupting, or bring it back. Optional: only a real call has volume. */
     duck?(active: boolean): void;
+    /** Calls `listener` when the first word of the next speech is actually played. Returns a function that cancels the wait. */
+    onPlaybackStart(listener: () => void): () => void;
 }
 
 export type VoiceFactory = (
@@ -74,6 +76,7 @@ export class Voice implements VoiceLike {
     private chunksSeen = 0;
     /** Keeps audio in order when a test is delaying its delivery. */
     private delivery: Promise<void> = Promise.resolve();
+    private playbackListeners: Array<() => void> = [];
     private audioBytesQueued = 0;
     private speechEpochBytes = 0;
 
@@ -84,6 +87,7 @@ export class Voice implements VoiceLike {
         });
         this.peer = new AudioPeer({
             onOpusPacket: (payload) => this.forwardAudio(payload),
+            onSpeechStart: () => this.playbackStarted(),
             onMessage: (data) => handlers.onClientMessage(data),
             onChannelOpen: () => handlers.onChannelOpen(),
             onClosed: (reason) => this.shutdown(reason),
@@ -229,13 +233,51 @@ export class Voice implements VoiceLike {
         connection.on("close", () => this.peer.expectMoreSpeech(false));
     }
 
+    private playbackStarted(): void {
+        const listeners = this.playbackListeners;
+        this.playbackListeners = [];
+        for (const listener of listeners) listener();
+    }
+
+    /** Calls `listener` once the next speech is actually being played. With no speech connection (text mode) there is nothing to wait for. */
+    onPlaybackStart(listener: () => void): () => void {
+        if (!this.tts) {
+            queueMicrotask(listener);
+            return () => undefined;
+        }
+        this.playbackListeners.push(listener);
+        return () => {
+            this.playbackListeners = this.playbackListeners.filter((l) => l !== listener);
+        };
+    }
+
     /** Resolves when the first audio of the next speech arrives, for latency measurement. */
     onFirstAudio(listener: () => void): void {
         this.firstAudioListeners.push(listener);
     }
 
+    /** Opens a fresh connection to the speech service if the old one has gone, so a dropped connection doesn't leave the interviewer mute. */
+    private async ensureTts(): Promise<void> {
+        if (config.voiceMode !== "live" || this.closed || this.tts?.readyState === 1) return;
+        for (let attempt = 1; attempt <= 2 && !this.closed; attempt++) {
+            try {
+                const next = await connectTts(this.params.voice);
+                if (this.closed) { next.close(); return; }
+                try { this.tts?.close(); } catch { /* already closed */ }
+                this.tts = next;
+                this.wireTts(next);
+                logger.info({ attempt }, "Speech synthesis connection restored");
+                return;
+            } catch (error) {
+                logger.warn({ err: error, attempt }, "Could not reconnect speech synthesis");
+                await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+            }
+        }
+    }
+
     /** Starts a new spoken reply. Waits for any earlier clear to be acknowledged so stale audio can't leak in. */
     async beginSpeech(): Promise<void> {
+        await this.ensureTts();
         if (this.clearAck) await new Promise<void>((resolve) => { const prev = this.clearAck; this.clearAck = () => { prev?.(); resolve(); }; });
         this.speechEpochBytes = 0;
     }
@@ -285,10 +327,13 @@ export class Voice implements VoiceLike {
         return Math.max(0, Math.min(1, 1 - remainingBytes / this.speechEpochBytes));
     }
 
-    /** Resolves once everything queued has been played, or after the timeout. */
+    /**
+     * Resolves once the speech has been played to its last word, or after the timeout. "Nothing is queued" is not enough:
+     * a moment after a reply is sent to the synthesiser its first audio has not arrived, so the queue is still empty.
+     */
     async drained(timeoutMs = 30_000): Promise<void> {
         const started = Date.now();
-        while (!this.closed && this.peer.queuedMs > 40 && Date.now() - started < timeoutMs) {
+        while (!this.closed && (this.peer.queuedMs > 40 || this.peer.speechActive) && Date.now() - started < timeoutMs) {
             await new Promise((resolve) => setTimeout(resolve, 60));
         }
     }
