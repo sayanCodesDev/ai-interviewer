@@ -229,6 +229,49 @@ describe("Conductor: talk questions", () => {
     });
 });
 
+describe("Conductor: the closing", () => {
+    /** Plays turns as the interviewer would, but hands back the closing turn instead of speaking it. */
+    async function untilClosing(rig: Rig): Promise<Turn> {
+        let turn: Turn | null = rig.conductor.begin();
+        let openProblem = "";
+        for (let guard = 0; guard < 120 && turn; guard++) {
+            for (const event of turn.events) if (event.type === "SHOW_CODE_EDITOR" && event.mode === "code" && event.problem) openProblem = event.problem.key;
+            if (turn.kind === "close") return turn;
+            const advance = /may not ask any more follow-ups|That is enough questions|end your reply with \[\[ADVANCE\]\]/i.test(turn.directive) && !/EITHER/.test(turn.directive);
+            const result = await streamReply(new FakeLlm(advance ? "Thanks, that covers it. [[ADVANCE]]" : "Interesting. Can you say more? "), rig.conductor.buildMessages(turn), { maxTokens: turn.maxTokens });
+            const outcome = rig.conductor.finishTurn(turn, result);
+            turn = outcome.next;
+            if (!turn && !rig.conductor.isEnded) {
+                const { step, phase } = rig.conductor.position;
+                turn = step === "coding" && phase !== "followup"
+                    ? rig.conductor.onSubmission({ problemKey: openProblem, language: "python", code: "def f(): pass", run: PASSING })
+                    : rig.conductor.onCandidate("This is a solid, detailed spoken answer with a concrete example.");
+            }
+        }
+        throw new Error("the closing turn was never reached");
+    }
+
+    test("the interview still ends when the candidate talks over the goodbye", async () => {
+        const rig = makeRig("quick");
+        const closing = await untilClosing(rig);
+        assert.equal(closing.kind, "close");
+        assert.ok(rig.conductor.isClosing);
+
+        // The candidate speaks over it: the reply is reported as cut off.
+        const outcome = rig.conductor.finishTurn(closing, { text: "Thank you, that was", markers: [], interrupted: true, firstSentenceMs: 100 } as never);
+        assert.equal(outcome.ended, "completed");
+        assert.ok(rig.conductor.isEnded);
+        assert.equal(rig.conductor.onCandidate("thanks, bye"), null, "nothing more is asked after the goodbye");
+    });
+
+    test("an uninterrupted goodbye ends it too, marker or not", async () => {
+        const rig = makeRig("quick");
+        const closing = await untilClosing(rig);
+        const outcome = rig.conductor.finishTurn(closing, { text: "Thanks for your time.", markers: [], interrupted: false, firstSentenceMs: 100 } as never);
+        assert.equal(outcome.ended, "completed");
+    });
+});
+
 describe("Conductor: coding problems", () => {
     test("presents the problem with the editor event and never hints during the introduction", async () => {
         const rig = makeRig("quick");

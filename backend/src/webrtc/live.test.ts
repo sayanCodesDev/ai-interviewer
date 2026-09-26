@@ -365,6 +365,42 @@ describe("LiveInterview: reconnecting and finishing", () => {
         void live;
     });
 
+    test("a candidate who talks over the goodbye does not stop the interview from ending", async () => {
+        let voiceRef: FakeVoice | null = null;
+        const llm = new FakeLlm(brain((directive) => {
+            // The moment the closing words start, the candidate says "thanks, bye" over them.
+            if (/Close the interview/.test(directive)) {
+                voiceRef?.handlers.onCandidateTurn("Thanks, bye!");
+                return "Thanks Sam, that was a pleasure. [[END]]";
+            }
+            return null;
+        }));
+        const { live, connect, say, created } = await setup("quick", { llm });
+        const voice = await connect();
+        voiceRef = voice;
+
+        for (let i = 0; i < 40 && voice.of("ENDING").length === 0; i++) {
+            const shown = voice.of("SHOW_CODE_EDITOR").filter((e) => e.mode === "code");
+            const key: string | undefined = shown.length > voice.of("HIDE_CODE_EDITOR").length ? shown[shown.length - 1].problem.key : undefined;
+            if (key && voice.of("SUBMISSION_RESULT").filter((r) => r.problemKey === key).length === 0) {
+                voice.handlers.onClientMessage(JSON.stringify({ type: "SUBMIT_CODE", problemKey: key, language: "javascript", code: JS_SOLUTIONS[key] }));
+                await live.idle();
+            } else {
+                await say(voice, ANSWER);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2_500));
+
+        assert.equal(voice.of("ENDING")[0]?.reason, "completed", "the interview ended normally");
+        const turns = await prisma.interviewTurn.findMany({ where: { interviewId: created.id, role: "INTERVIEWER" }, orderBy: { seq: "asc" } });
+        const goodbye = turns[turns.length - 1]!;
+        assert.match(goodbye.text, /pleasure/);
+        assert.equal(goodbye.interrupted, false, "the goodbye was not cut off by the candidate");
+        const row = await prisma.interview.findUniqueOrThrow({ where: { id: created.id } });
+        assert.equal(row.status, "COMPLETED");
+    });
+
     test("an interview with almost nothing in it is abandoned and gets no report", async () => {
         const { live, connect, finished, created } = await setup("quick");
         await connect();

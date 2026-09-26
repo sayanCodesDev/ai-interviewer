@@ -1,228 +1,170 @@
-# 🤖 AI Technical Interviewer
+# AI Interviewer
 
-> **Real-time, voice-interactive technical interviewing platform powered by AI, WebRTC, Deepgram, and Groq.**
+A technical interview you can practise out loud. An AI interviewer talks with you over voice, asks questions shaped by the job you're preparing for, lets you solve real coding problems in a live editor with hidden tests, and finishes with a scored report: how you did, where your effort showed, what to change, and the full transcript.
 
----
+It is practice feedback, not a hiring decision, and the product says so.
 
-## 🌟 Overview
+## What it does
 
-**AI Technical Interviewer** is a full-stack, autonomous technical interviewing platform designed to simulate real-world hiring rounds. Candidates participate in dynamic voice-based technical interviews, answer context-aware questions tailored to their actual GitHub projects, write and execute code in an integrated Monaco Editor, and receive instant, comprehensive performance scorecards.
+**A real interview loop, not one long chat.** The interview is a sequence of rounds run by code (a state machine), not by a giant prompt. The AI voices each step; the software decides which round, which question, when to open the editor, when to give a hint and when time is up.
 
----
+| Format | Length | Rounds |
+|---|---|---|
+| Quick screen | 20 min | Introduction, background, 1 coding problem, wrap-up |
+| Standard | 45 min | Introduction, background, 2 coding problems, job-specific technical questions, behavioural, wrap-up |
+| Full loop | 75 min | The standard loop with a third coding problem and a system-design round (juniors get concept questions instead of design) |
+| Coding drill | 30 min | Data structures and algorithms only: four problems back to back with a quick complexity question after each |
 
-## ✨ Key Features
+**Tailored to the job.** Paste a job description, optionally add a resume (PDF or text) and a GitHub username. One analysis turns them into weighted skills, role-specific questions with what a strong answer covers, and vocabulary to help speech recognition ("Kubernetes", "PostgreSQL"). If the language model is unavailable, a hand-written question bank for seven roles takes over.
 
-- 🎙️ **Real-Time Voice AI (WebRTC)**: Ultra-low latency, bidirectional audio streaming between the candidate and the AI interviewer using **Werift WebRTC**, **Deepgram STT/TTS**, and **Groq LLM**.
-- 🤖 **Context-Aware AI Interviewer**: Powered by Groq (Llama-3), generating adaptive questions based on candidate responses, tech stack, and experience level.
-- 🐙 **GitHub Profile Intelligence**: Scrapes and analyzes candidates' GitHub repositories to ask targeted technical questions about their real-world codebases.
-- 💻 **Live Monaco Code Editor**: Embedded code editing environment supporting live code submission, logic verification, and Python execution during coding rounds.
-- 📊 **Automated Assessment & Scorecard**: Generates post-interview feedback highlighting strengths, improvement areas, code quality, and communication skills.
-- 🔐 **Secure Authentication**: User registration and login powered by **JWT tokens**, **bcrypt** password hashing, and **PostgreSQL** state management via **Prisma ORM**.
+**Voice that behaves.** Deepgram Nova-3 for speech recognition and Aura-2 for speech synthesis. Turn-taking adapts: it answers quickly after a finished sentence and waits after a trailing "and" or "um". The interviewer is only interrupted by real speech, never by "mm-hmm" or a stray sound. You can also type instead of speaking.
 
----
+**A professional editor.** Monaco (the editor inside VS Code), self-hosted. Per-problem, per-language starter code; JavaScript, TypeScript, Python, C++ and Java; **Run** checks the examples, **Submit** grades against hidden tests; custom input; shortcuts, font, tabs, wrap, minimap, themes. Your code is saved per problem and language, so switching language never loses work. 38 curated problems, each verified by an independent solution.
 
-## 📐 System Architecture
+**Code runs in a sandbox.** Every run is a throwaway Docker container with no network, capped memory, CPU and processes, a read-only filesystem and an unprivileged user.
+
+**A report worth reading.** Scores out of 100 with a readiness band, skill by skill (problem solving, code correctness from the real test results, code quality, complexity analysis, technical depth, communication), a round-by-round summary, per-problem cards with your final code, strengths with quotes from what you said, what to change, a prioritised study plan with links, and the full transcript with timestamps at the bottom. Every quote is checked against the transcript on the server, and the overall number is computed by the server, not written by the model.
+
+**Also:** dashboard with score trend, delete any interview or your whole account, dark and light themes, keyboard and screen-reader friendly (axe clean), works on phones.
+
+## How it fits together
 
 ```mermaid
-graph TD
-    subgraph Client ["Client Browser (Frontend)"]
-        UI["React 19 + Tailwind CSS"]
-        Monaco["Monaco Code Editor"]
-        WebRTCClient["WebRTC Microphone / Audio Stream"]
+graph LR
+    B[Browser: React, Monaco] -- HTTPS --> API
+    B -- WebRTC audio + events --> API
+    subgraph API [API server, stateless except live calls]
+        H[Express: auth, interviews, reports]
+        C[Conductor: rounds, questions, hints, time]
+        V[Voice: WebRTC peer, turn-taking]
+        W[Report worker]
     end
-
-    subgraph Server ["Backend Server (Node.js / Express)"]
-        API["Express REST API (Port 2000)"]
-        Auth["JWT Auth & Middleware"]
-        Scraper["GitHub Profile Scraper"]
-        WebRTCServer["Werift WebRTC Server"]
-    end
-
-    subgraph External ["External Services & Database"]
-        DeepgramSTT["Deepgram STT (Speech-to-Text)"]
-        DeepgramTTS["Deepgram TTS (Text-to-Speech)"]
-        GroqLLM["Groq Llama-3 (LLM Brain)"]
-        DB[(PostgreSQL Database)]
-    end
-
-    UI <-->|HTTP / REST API| API
-    Monaco <-->|Code Submit & Verify| API
-    WebRTCClient <-->|Audio WebRTC RTP| WebRTCServer
-    API <-->|Prisma ORM| DB
-    API -->|Extract Repos| Scraper
-    WebRTCServer <-->|Transcribe Audio| DeepgramSTT
-    WebRTCServer <-->|Synthesize Speech| DeepgramTTS
-    WebRTCServer <-->|Prompt & Converse| GroqLLM
+    H --> DB[(PostgreSQL)]
+    C --> DB
+    W --> DB
+    V -- audio --> STT[Deepgram STT]
+    V -- text --> TTS[Deepgram TTS]
+    C -- prompts --> LLM[Language model: Groq or any OpenAI-compatible API]
+    W -- transcript, results --> LLM
+    H -- run code --> SB[Docker sandbox]
 ```
 
----
+- **Everything durable is in PostgreSQL**: users, interviews, transcripts, submissions, reports. Only a live call's media connection lives in one server process.
+- **Reports are a queue in the database.** When an interview ends a job is created; any instance claims it with `FOR UPDATE SKIP LOCKED`, retries with backoff, and survives restarts.
+- **The scorer never grades its own homework.** Correctness comes from hidden-test results; the language model judges the conversation and must quote evidence, which the server verifies.
 
-## 🛠️ Tech Stack
+## Run it locally
 
-| Component | Technologies |
-|---|---|
-| **Frontend** | React 19, TypeScript, Bun, Tailwind CSS v4, Monaco Editor (`@monaco-editor/react`), Recoil, Sonner, Lucide Icons |
-| **Backend** | Node.js, Express v5, TypeScript, Werift (WebRTC), WebSockets (`ws`), Prisma ORM, PostgreSQL |
-| **AI / Voice Stack** | **Groq SDK** (Llama-3 LLM reasoning), **Deepgram SDK** (STT transcription & TTS speech synthesis) |
-| **Database** | PostgreSQL (supported via Neon DB / AWS RDS) |
-
----
-
-## 📋 Prerequisites
-
-Before starting locally, ensure you have installed:
-
-- **Node.js** (v18.x or v20.x LTS)
-- **Bun** (Recommended for frontend development) or **npm**
-- **PostgreSQL Database** (Local instance or free cloud database like [Neon](https://neon.tech/))
-- **API Keys**:
-  - **Groq API Key**: Get free tier key at [console.groq.com](https://console.groq.com/)
-  - **Deepgram API Key**: Get $200 free credits at [console.deepgram.com](https://console.deepgram.com/)
-
----
-
-## 🚀 How to Start Locally
-
-### 1️⃣ Clone the Repository
+You need Node 22+, [Bun](https://bun.sh), Docker (for the code sandbox) and a PostgreSQL database (Neon works; so does a local container).
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/ai-interviewer.git
-cd ai-interviewer
+# 1. Backend
+cd backend
+cp .env.example .env            # fill in DATABASE_URL, GROQ_API_KEY, DEEPGRAM_API_KEY
+npm install                     # also generates the Prisma client
+docker build -t ai-interviewer-runner:latest runner   # the code sandbox image, once
+npm run dev                     # applies pending migrations, then starts on :2000
+
+# 2. Frontend (another terminal)
+cd frontend
+cp .env.example .env
+bun install
+bun run dev                     # http://localhost:3000
 ```
 
----
+`npm run dev` and `npm start` run `prisma migrate deploy` first, so pulling new code and restarting is enough to bring the database up to date. It only adds what is missing and never resets anything. If a migration is ever missing, the server refuses to start and tells you which one, instead of failing later with "table does not exist".
 
-### 2️⃣ Backend Setup
+### Try it without spending anything
 
-1. **Navigate to the backend directory**:
-   ```bash
-   cd backend
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   npm install
-   ```
-
-3. **Configure Environment Variables**:
-   Create a `.env` file in `backend/`:
-   ```env
-   PORT=2000
-   DEEPGRAM_API_KEY="your_deepgram_api_key"
-   GROQ_API_KEY="your_groq_api_key"
-   DATABASE_URL="postgresql://user:password@localhost:5432/ai_interviewer?sslmode=require"
-   JWT_SECRET="your_jwt_secret_key_here"
-   # Comma-separated list of your frontend origins
-   ALLOWED_ORIGINS="http://localhost:3000,http://localhost:5173"
-   # Optional — defaults to qwen/qwen3.8-27b. Must be a model your key can reach;
-   # the server prints the available list at startup if this one is wrong.
-   GROQ_MODEL="qwen/qwen3.8-27b"
-   ```
-
-   > `JWT_SECRET` is required when `NODE_ENV=production`. In development the server
-   > falls back to a random per-process secret, so sessions end at every restart.
-
-4. **Run Database Migrations & Prisma Setup**:
-   ```bash
-   npx prisma generate
-   npx prisma db push
-   ```
-
-5. **Start the Backend Server**:
-   ```bash
-   npm run start
-   ```
-   > Server will start on `http://localhost:2000`.
-
----
-
-### 3️⃣ Frontend Setup
-
-1. **Open a new terminal window and navigate to the frontend directory**:
-   ```bash
-   cd frontend
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   bun install
-   # or: npm install
-   ```
-
-3. **Configure Environment Variables**:
-   Create a `.env` file in `frontend/`:
-   ```env
-   VITE_BACKEND_URL=http://localhost:2000
-   ```
-
-4. **Start the Frontend Development Server**:
-   ```bash
-   bun dev
-   # or: npm run dev
-   ```
-   > Frontend will run at `http://localhost:3000`.
-
----
-
-### 4️⃣ Accessing & Using the App
-
-1. Open `http://localhost:3000` in your web browser.
-2. Sign Up for a new account (or Sign In).
-3. Enter candidate details (e.g. GitHub URL, Target Job Role, Focus Areas).
-4. Allow browser microphone access when prompted.
-5. Begin the voice-interactive interview, solve live coding problems in the Monaco Editor, and review your performance evaluation.
-
----
-
-## 📁 Repository Structure
-
-```
-ai-interviewer/
-├── backend/
-│   ├── prisma/
-│   │   └── schema.prisma        # PostgreSQL database schema
-│   ├── src/
-│   │   ├── GithubScrape/        # GitHub repo scraping utilities
-│   │   ├── services/
-│   │   │   ├── llm.ts           # Groq streaming + interviewer prompt, per-session transcripts
-│   │   │   ├── stt.ts           # Deepgram speech-to-text socket
-│   │   │   ├── tts.ts           # Deepgram text-to-speech socket
-│   │   │   ├── sessionStore.ts  # Per-candidate interview sessions (in-memory, TTL'd)
-│   │   │   └── codeRunner.ts    # Runs submitted code in an isolated subprocess
-│   │   ├── auth.ts              # JWT signing & auth middleware
-│   │   ├── index.ts             # Express API server & Auth endpoints
-│   │   ├── serverWebrtc.ts      # Werift WebRTC audio pipeline
-│   │   └── validate.ts          # Request validation
-│   ├── package.json
-│   └── tsconfig.json
-├── frontend/
-│   ├── src/
-│   │   ├── components/          # Interview UI, Monaco Editor, Forms, Auth
-│   │   ├── lib/config.ts        # Backend origin (VITE_BACKEND_URL)
-│   │   ├── App.tsx              # Main Routing & UI logic
-│   │   └── index.ts             # Bun development entry point
-│   ├── build.ts                 # Production bundle (Tailwind v4 via bun-plugin-tailwind)
-│   └── package.json
-└── README.md                    # Project documentation
+```bash
+cd backend
+npx tsx scripts/mock-llm.ts &                       # a stand-in language model
+LLM_BASE_URL=http://127.0.0.1:2099/v1 LLM_API_KEY=mock VOICE_MODE=text npm run dev
 ```
 
----
+`VOICE_MODE=text` skips speech entirely: the interview runs over the data channel and you type your answers. Development and tests only; production refuses to start with it.
 
-## ☁️ Deployment
+## Limits you should know about
 
-The backend runs as a long-lived Node process (EC2 or any VM — it holds WebRTC and
-Deepgram sockets, so it is not serverless-friendly). The frontend is a static bundle
-from `bun run build`, servable from S3 + CloudFront or any static host.
+- **Free Groq keys are not enough for real traffic.** Besides 8,000 tokens per minute, each model allows about **200,000 tokens per day**. One 45-minute interview uses roughly 60–70k, so a free key supports a handful of interviews a day. When the daily allowance is gone the API says so up front ("usage limit, try again in about N minutes") instead of failing mid-call, and reports wait instead of failing. For real use, put a paid key in `GROQ_API_KEY` or point `LLM_BASE_URL` at another OpenAI-compatible provider. No code change needed.
+- **Docker is required** on the machine that runs the API, for the code sandbox. Production refuses the unsandboxed local runner.
+- **Behind NAT (any cloud VM) WebRTC needs setup**: `WEBRTC_PUBLIC_IP`, a UDP port range, and that range open in the firewall. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+- **English only.** Accent and voice are selectable.
+- **Rate limits are per server instance** by default. With several instances behind a load balancer the limits are per instance; put a shared store or gateway limit in front if you need exact global limits.
+- **Live calls are pinned to the instance that holds them.** A reconnect within 90 seconds must reach the same instance (sticky routing); otherwise the interview is closed and its report generated.
 
-Two things to get right when deploying:
+## Measured capacity
 
-- Set `ALLOWED_ORIGINS` on the backend to your frontend origin, and `VITE_BACKEND_URL`
-  in `frontend/.env.production` to the backend origin, before running the build.
-- Serve both over HTTPS. Browsers only grant microphone access on secure origins, and
-  the auth cookie is only sent cross-site when it is marked `Secure`.
+Measured with `backend/scripts/load-test.ts` on a 10-core laptop, text mode with the mock model (no speech or model cost; everything else the server does per call is real, including WebRTC setup and the interviewer's audio stream):
 
----
+| Simultaneous interviews | Server CPU while all are open | Event-loop lag p99 | Memory | Completed |
+|---|---|---|---|---|
+| 10 | 13% of one core | 11 ms | ~190 MB | 10 / 10 |
+| 30 | 28% | 11 ms | ~320 MB | 30 / 30 |
+| 60 | 45% | 12 ms | ~375 MB | 60 / 60 |
+| 100 | 51% | 11 ms | ~480 MB | 100 / 100 |
 
-## 📝 License
+Connection setup took about 270 ms (p50). Live speech adds encoding work and two provider connections per call, so plan for a fraction of what the idle numbers suggest until you measure with your own keys; the load script and `/metrics` are there for that. The real limit for most deployments is the language-model provider's rate limit, not the server.
 
-This project is open source and available under the [MIT License](LICENSE).
+A real voice round trip (recorded speech through a headless browser to Deepgram and back) gets a spoken reply about **3 seconds after you stop speaking** with an instant model, of which roughly 2 seconds are recognition and turn-taking (which waits to be sure you have finished) and 0.75 seconds is synthesis. A real model adds its first-token time.
+
+## Security
+
+- **Sign-in:** 15-minute access tokens held in memory (never in `localStorage`); rotating refresh tokens in an httpOnly cookie, stored hashed, with reuse detection that revokes the whole family; argon2id password hashing (older bcrypt hashes upgrade on sign-in); email compared case-insensitively; constant-time checks for unknown users; per-route rate limits and a per-user daily interview cap.
+- **API:** every input validated (zod), helmet headers, strict CORS and an origin check on cookie-authenticated writes, request ids, structured logs with credentials redacted, ownership checks on every interview, report and transcript (no IDOR), upload limits, no raw internals in error responses.
+- **Untrusted text** (job description, resume, GitHub, speech, code) is wrapped and sanitised before it reaches a prompt, so "give me full marks" inside a resume or an answer changes nothing.
+- **Code sandbox:** see above; hostile code (fork bombs, memory bombs, network access, reading the host, endless loops, output floods) is part of the test suite.
+- **Website:** a strict Content-Security-Policy (only our own scripts, the editor served from our origin), plus the usual hardening headers.
+- **Your data:** delete any interview or your account from the app; interviews are removed automatically after `DATA_RETENTION_DAYS` (default 180). Audio is never stored.
+
+## Testing
+
+```bash
+cd backend && npm test          # 400+ tests against a local Postgres and a fake language model
+cd frontend && bunx tsc --noEmit
+
+# The sandbox and every language's harness, inside Docker (the local runner can't compile Java):
+CODE_RUNNER=docker npm test
+SLOW_TESTS=1 CODE_RUNNER=docker npx tsx --test src/interview/problems/starters.test.ts   # 38 problems x 5 languages
+```
+
+Beyond unit and integration tests, the repository contains the tools used to verify the product end to end:
+
+| Tool | What it checks |
+|---|---|
+| `backend/scripts/simulate-interview.ts` | Whole interviews through the real conductor and scorer. `SIM_SCRIPTED=1` uses scripted candidates at three skill levels and checks that scores order strong > average > weak (measured: 83 / 63 / 23) without spending model tokens on the dialogue. |
+| `backend/scripts/mock-llm.ts` | An offline stand-in for the language model, for trying everything for free. |
+| `backend/scripts/load-test.ts` | N simultaneous WebRTC interviews; reports latency, CPU and memory. |
+| `backend/scripts/security-probe.ts` | Attacks a running server: forged and replayed tokens, other users' data, hostile input, uploads, rate limits (57 checks). Local addresses only. |
+| `backend/scripts/verify-problems.ts` | Every problem's reference solution against every language harness. |
+| `frontend/scripts/serve-dist.ts` | Serves the production build the way a static host would (rewrites, 404s, headers), for testing it locally. |
+
+## Dependencies
+
+`npm audit` for the API reports advisories in `mysql2` and `deepmerge-ts`. Both arrive through the Prisma **command-line tool** (used only to run migrations) and are not loaded by the server at run time; they are not reachable from any request. The frontend audit is clean.
+
+## Project layout
+
+```
+backend/
+  prisma/            schema and migrations
+  src/auth/          tokens, sessions, passwords
+  src/http/          app, middleware, rate limits, routes
+  src/interview/     plans, conductor, prompts, problem bank, JD analysis
+  src/webrtc/        live call runtime, peer connection, voice
+  src/voice/         speech recognition, synthesis, turn-taking
+  src/scoring/       rubric, evaluation, report worker
+  src/runner/        Docker sandbox and the unsafe local fallback
+  src/llm/           model client, router, JSON helper
+  scripts/           simulator, mock model, load test, tools
+  runner/            the sandbox image
+frontend/
+  src/pages/         landing, role pages, setup, lobby, interview room, report, dashboard
+  src/components/    interview room, editor, report, landing
+  src/seo.ts         per-route titles, canonicals and structured data
+  prerender.ts       turns the public pages into static HTML at build time
+```
+
+## Deploying
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): the EC2 + PM2 + Netlify route this project started on, a Docker Compose setup, the WebRTC and cookie settings that trip people up, and how to scale beyond one instance.
