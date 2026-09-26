@@ -1,7 +1,7 @@
 import { MarketingLayout } from "@/layouts/MarketingLayout";
 
-// Written as a plain expression on purpose: see src/lib/config.ts.
-const CONTACT: string | undefined = import.meta.env.VITE_CONTACT_EMAIL;
+// A build-time global, on purpose: see src/lib/config.ts.
+const CONTACT: string | undefined = typeof __VITE_CONTACT_EMAIL__ !== "undefined" ? __VITE_CONTACT_EMAIL__ : undefined;
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
     return (
