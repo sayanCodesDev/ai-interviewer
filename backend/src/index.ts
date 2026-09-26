@@ -1,4 +1,5 @@
 import { config } from "./config/env";
+import { checkSchema, schemaHelp } from "./db/schema";
 import { purgeExpiredSessions } from "./auth/sessions";
 import { createApp } from "./http/app";
 import { accountRouter } from "./http/routes/account";
@@ -9,6 +10,20 @@ import { logger } from "./observability/logger";
 import { drainLive } from "./webrtc/registry";
 import { describeRunner } from "./runner";
 import { startReportWorker, stopReportWorker } from "./scoring/worker";
+
+// Refuse to run against a database that is missing migrations. Otherwise the first sign-in fails with
+// "The table public.RefreshSession does not exist" instead of telling anyone what to do.
+try {
+    const schema = await checkSchema();
+    if (schema.skipped) logger.warn("Migration files are not deployed with the server, so the database schema could not be checked");
+    else if (!schema.ok) {
+        logger.fatal({ missing: schema.missing }, schemaHelp(schema.missing));
+        process.exit(1);
+    }
+} catch (error) {
+    logger.fatal({ err: error }, "Could not reach the database. Check DATABASE_URL and that the database is running.");
+    process.exit(1);
+}
 
 const app = createApp({ apiRouters: [accountRouter, interviewsRouter, webrtcRouter] });
 

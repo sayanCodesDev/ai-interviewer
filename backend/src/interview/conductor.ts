@@ -59,7 +59,7 @@ export interface ConductorOptions {
 }
 
 type Step =
-    | { t: "talk"; probes: number }
+    | { t: "talk"; probes: number; brief?: number }
     | {
           t: "coding";
           phase: "present" | "working" | "followup";
@@ -69,6 +69,7 @@ type Step =
           followUps: TalkItem[];
           followUpIndex: number;
           probes: number;
+          brief?: number;
       }
     | { t: "design"; probes: number; notes: string }
     | { t: "close" };
@@ -79,6 +80,8 @@ const MAX_HISTORY_CHARS = 5_000;
 /** A call may run this long past its planned length before it is closed regardless. */
 const GRACE_MINUTES = 6;
 const BRIEF_ANSWER_WORDS = 6;
+/** After this many very short answers in a row to one question, stop pressing and move on. */
+const MAX_BRIEF_IN_A_ROW = 3;
 const HINT_LIMIT = 3;
 
 const speechOnlyTurns = { maxTokens: 200 };
@@ -245,12 +248,12 @@ export class Conductor {
                 if (this.round.type === "wrapup") {
                     return this.turn("respond", directives.candidateQuestions({ probesUsed: step.probes, maxProbes: (this.item as TalkItem).maxProbes, time: this.time }), [], ["ADVANCE"]);
                 }
-                return this.turn("respond", directives.respond(this.talkView(this.item as TalkItem, step.probes), this.lastCandidateWords < BRIEF_ANSWER_WORDS), [], ["ADVANCE"]);
+                return this.turn("respond", directives.respond(this.talkView(this.item as TalkItem, step.probes), ...this.briefness(step)), [], ["ADVANCE"]);
 
             case "coding": {
                 if (step.phase === "followup") {
                     const followUp = step.followUps[step.followUpIndex]!;
-                    return this.turn("respond", directives.respond(this.followUpView(followUp, step), this.lastCandidateWords < BRIEF_ANSWER_WORDS), [], ["ADVANCE"]);
+                    return this.turn("respond", directives.respond(this.followUpView(followUp, step), ...this.briefness(step)), [], ["ADVANCE"]);
                 }
                 const def = this.problem();
                 return this.turn("coach", directives.coach({
@@ -378,14 +381,14 @@ export class Conductor {
 
             case "respond": {
                 if (step.t === "talk") {
-                    const done = markers.includes("ADVANCE") || step.probes >= (this.item as TalkItem).maxProbes;
+                    const done = markers.includes("ADVANCE") || step.probes >= (this.item as TalkItem).maxProbes || (step.brief ?? 0) >= MAX_BRIEF_IN_A_ROW;
                     if (done) return this.advance(true);
                     if (this.lastCandidateWords >= BRIEF_ANSWER_WORDS) step.probes++;
                     return none;
                 }
                 if (step.t === "coding" && step.phase === "followup") {
                     const followUp = step.followUps[step.followUpIndex]!;
-                    const done = markers.includes("ADVANCE") || step.probes >= followUp.maxProbes;
+                    const done = markers.includes("ADVANCE") || step.probes >= followUp.maxProbes || (step.brief ?? 0) >= MAX_BRIEF_IN_A_ROW;
                     if (!done) {
                         if (this.lastCandidateWords >= BRIEF_ANSWER_WORDS) step.probes++;
                         return none;
@@ -457,6 +460,7 @@ export class Conductor {
     private nextFollowUpOrAdvance(step: Extract<Step, { t: "coding" }>): Outcome {
         step.followUpIndex += 1;
         step.probes = 0;
+        step.brief = 0;
         const next = step.followUps[step.followUpIndex];
         if (!next) return this.advance(true);
         const def = this.problem();
@@ -569,6 +573,16 @@ export class Conductor {
 
     private problem(): ProblemDef {
         return getProblemDef((this.item as CodingItem).problemKey)!;
+    }
+
+    /**
+     * Whether the answer just given was very short, and whether this is the last time the interviewer may
+     * press for more. Counts short answers in a row for the current question; a proper answer resets it.
+     */
+    private briefness(step: { brief?: number }): [brief: boolean, moveOn: boolean] {
+        const brief = this.lastCandidateWords < BRIEF_ANSWER_WORDS;
+        step.brief = brief ? (step.brief ?? 0) + 1 : 0;
+        return [brief, step.brief >= MAX_BRIEF_IN_A_ROW];
     }
 
     private talkView(item: TalkItem, probesUsed: number, firstInRound = false): TalkView {

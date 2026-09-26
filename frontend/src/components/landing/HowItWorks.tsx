@@ -118,7 +118,7 @@ function StackedStory() {
     return (
         <div className="page-container py-20 sm:py-24">
             <Heading />
-            <div className="mt-14 grid gap-16">
+            <div className="mt-14 grid grid-cols-1 gap-16">
                 {STEPS.map((step, index) => (
                     <m.div key={step.title} variants={fadeUp} initial="hidden" whileInView="visible" viewport={inViewOnce}>
                         <div className="flex items-baseline gap-4">

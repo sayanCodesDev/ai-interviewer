@@ -133,7 +133,53 @@ describe("Conductor: opening and structure", () => {
     });
 });
 
+/** Answer the introduction properly until the first background question is on the table. */
+async function intoBackground(rig: Rig) {
+    for (let i = 0; i < 6 && !/background/.test(rig.conductor.position.round); i++) {
+        await rig.speak(rig.conductor.onCandidate("I'm Sam, a backend engineer with five years of experience in Go and Postgres."));
+    }
+    assert.match(rig.conductor.position.round, /background/);
+}
+
 describe("Conductor: talk questions", () => {
+    test("very short answers are met with an invitation to say more, but not forever", async () => {
+        const rig = makeRig("quick");
+        await rig.speak(rig.conductor.begin());
+        await intoBackground(rig);
+
+        const stuck = () => rig.conductor.position.item;
+        const first = stuck();
+        // Two very short answers: the interviewer is told to invite more detail and not to advance.
+        const t1 = rig.conductor.onCandidate("Not sure.")!;
+        assert.match(t1.directive, /very short: invite more detail/);
+        await rig.speak(t1, () => "Could you say a little more?");
+        const t2 = rig.conductor.onCandidate("I don't know.")!;
+        assert.match(t2.directive, /very short: invite more detail/);
+        await rig.speak(t2, () => "Even a rough idea helps.");
+        assert.equal(stuck(), first, "still on the same question");
+
+        // The third in a row is the last: no more pressing, and the question is closed even if the model forgets the marker.
+        const t3 = rig.conductor.onCandidate("No idea.")!;
+        assert.match(t3.directive, /several very short answers in a row/);
+        assert.match(t3.directive, /\[\[ADVANCE\]\]/);
+        assert.doesNotMatch(t3.directive, /EITHER/);
+        await rig.speak(t3, () => "That's fine, let's move on.");
+        assert.notEqual(stuck(), first, "moved on to the next question");
+    });
+
+    test("a proper answer resets the count of short ones", async () => {
+        const rig = makeRig("quick");
+        await rig.speak(rig.conductor.begin());
+        await intoBackground(rig);
+        const first = rig.conductor.position.item;
+        for (const answer of ["Not sure.", "No idea.", "Here is a proper answer with some real detail about the project I built."]) {
+            await rig.speak(rig.conductor.onCandidate(answer)!, () => "Interesting. Tell me more?");
+        }
+        const t = rig.conductor.onCandidate("Hmm.")!;
+        assert.match(t.directive, /very short: invite more detail/, "the streak started again from one");
+        assert.equal(rig.conductor.position.item, first);
+    });
+
     test("follow-ups are capped, and a model that never emits ADVANCE cannot stall the interview", async () => {
         const rig = makeRig("standard");
         await rig.speak(rig.conductor.begin());

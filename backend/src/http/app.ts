@@ -6,6 +6,7 @@ import helmet from "helmet";
 import { pinoHttp } from "pino-http";
 import { prisma } from "../../lib/prisma";
 import { config } from "../config/env";
+import { schemaReady } from "../db/schema";
 import { logger } from "../observability/logger";
 import { errorHandler, notFoundHandler, originGuard, requestId } from "./middleware";
 import { createRateLimits, type RateLimits } from "./rateLimits";
@@ -58,6 +59,11 @@ export function createApp(options: AppOptions = {}): Express {
     app.get("/readyz", async (_req, res) => {
         try {
             await prisma.$queryRaw`SELECT 1`;
+            const schema = await schemaReady();
+            if (!schema.ok) {
+                res.status(503).json({ status: "unavailable", reason: "database_schema_outdated", missing: schema.missing });
+                return;
+            }
             res.json({ status: "ready" });
         } catch (error) {
             logger.error({ err: error }, "Readiness check failed");
