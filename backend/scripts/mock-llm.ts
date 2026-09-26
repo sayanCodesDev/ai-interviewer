@@ -132,9 +132,12 @@ const server = http.createServer(async (req, res) => {
     }
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
+    // MOCK_LLM_SENTENCE_DELAY_MS pauses after each sentence, as a slow model does, to see how speech copes with gaps between sentences.
+    const sentenceDelay = Number(process.env.MOCK_LLM_SENTENCE_DELAY_MS ?? 0);
     for (let i = 0; i < text.length; i += 7) {
-        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text.slice(i, i + 7) } }] })}\n\n`);
-        await new Promise((resolve) => setTimeout(resolve, 12));
+        const piece = text.slice(i, i + 7);
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: piece } }] })}\n\n`);
+        await new Promise((resolve) => setTimeout(resolve, /[.?!]\s*$/.test(piece) && sentenceDelay > 0 ? sentenceDelay : 12));
     }
     res.write("data: [DONE]\n\n");
     res.end();

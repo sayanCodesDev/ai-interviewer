@@ -17,7 +17,12 @@ It is practice feedback, not a hiring decision, and the product says so.
 
 **Tailored to the job.** Paste a job description, optionally add a resume (PDF or text) and a GitHub username. One analysis turns them into weighted skills, role-specific questions with what a strong answer covers, and vocabulary to help speech recognition ("Kubernetes", "PostgreSQL"). If the language model is unavailable, a hand-written question bank for seven roles takes over.
 
-**Voice that behaves.** Deepgram Nova-3 for speech recognition and Aura-2 for speech synthesis. Turn-taking adapts: it answers quickly after a finished sentence and waits after a trailing "and" or "um". The interviewer is only interrupted by real speech, never by "mm-hmm" or a stray sound. You can also type instead of speaking.
+**Voice that behaves.** Deepgram Nova-3 for speech recognition and Aura-2 for speech synthesis. Turn-taking adapts: it answers quickly after a finished sentence and waits after a trailing "and" or "um". You can also type instead of speaking. What keeps the interviewer's voice smooth and understandable, each found and checked by recording what a browser actually receives:
+
+- **A playout buffer sized to the speech service's delivery speed.** Synthesised speech does not arrive at a steady pace; played the instant it lands, every late chunk becomes a hole in a word (against a provider delivering at 0.6x real time, an 11-second greeting had 87 pauses). Speech is held back briefly, more when delivery is slow, and a dry spell becomes one clean pause instead of a stutter.
+- **It does not interrupt itself.** On speakers the interviewer's own voice leaks into your microphone and used to make it cut itself off and answer its own echo. Echo is recognised against what was just said (tolerating the recogniser's misspellings), and a possible interruption first dips the voice and stops it only once it is clear you are talking.
+- **Loss protection and level.** Mono Opus with in-band forward error correction (halves audible glitches at 8% packet loss), a limiter with a small volume boost, and text rewritten for the ear ("O(n log n)", "k8s", "->", identifiers and addresses are said the way a person would).
+- **In the browser:** the voice is played by the audio element alone, a "weak connection" notice appears if the browser is hiding gaps, a sample of the interviewer's voice can be played in the lobby, and Bluetooth headsets (which drop to phone-call quality when the microphone is on) get a warning.
 
 **A professional editor.** Monaco (the editor inside VS Code), self-hosted. Per-problem, per-language starter code; JavaScript, TypeScript, Python, C++ and Java; **Run** checks the examples, **Submit** grades against hidden tests; custom input; shortcuts, font, tabs, wrap, minimap, themes. Your code is saved per problem and language, so switching language never loses work. 38 curated problems, each verified by an independent solution.
 
@@ -142,6 +147,7 @@ Beyond unit and integration tests, the repository contains the tools used to ver
 |---|---|
 | `backend/scripts/simulate-interview.ts` | Whole interviews through the real conductor and scorer. `SIM_SCRIPTED=1` uses scripted candidates at three skill levels and checks that scores order strong > average > weak (measured: 83 / 63 / 23) without spending model tokens on the dialogue. |
 | `backend/scripts/mock-llm.ts` | An offline stand-in for the language model, for trying everything for free. |
+| `backend/scripts/playout-sim.ts` | Replays realistic and bad speech-delivery patterns against the playout buffer and reports first-word delay, stutters and silence, to choose and check its settings. |
 | `backend/scripts/load-test.ts` | N simultaneous WebRTC interviews; reports latency, CPU and memory. |
 | `backend/scripts/smoke.ts` | The quick check to run after a deploy or a database change: sign up, sign in, refresh, create/read/delete an interview, delete the account, against any server (`BASE_URL=... ALLOW_REMOTE=1`). Leaves nothing behind. |
 | `backend/scripts/security-probe.ts` | Attacks a running server: forged and replayed tokens, other users' data, hostile input, uploads, rate limits (57 checks). Local addresses only. |
