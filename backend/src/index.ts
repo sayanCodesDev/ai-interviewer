@@ -6,6 +6,7 @@ import { accountRouter } from "./http/routes/account";
 import { interviewsRouter } from "./http/routes/interviews";
 import { webrtcRouter } from "./http/routes/webrtc";
 import { verifyModels } from "./llm/client";
+import { startLoopBlocker } from "./voice/faults";
 import { logger } from "./observability/logger";
 import { drainLive } from "./webrtc/registry";
 import { describeRunner } from "./runner";
@@ -38,6 +39,7 @@ const server = app.listen(config.port, () => {
 });
 
 startReportWorker();
+startLoopBlocker(); // test-only: does nothing unless AUDIO_TEST_BLOCK_MS is set outside production
 
 // Housekeeping: expired sessions, orphaned interviews, data past its retention period.
 startMaintenance();

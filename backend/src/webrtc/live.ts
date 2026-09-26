@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { config } from "../config/env";
 import { logger } from "../observability/logger";
-import { codeRuns, firstAudioMs, firstSentenceMs, interviewsFinished, llmErrors } from "../observability/metrics";
+import { clientConcealedPercent, clientLossPercent, codeRuns, firstAudioMs, firstSentenceMs, interviewsFinished, llmErrors, weakConnectionWindows } from "../observability/metrics";
 import { getLlm, models, RateLimitedError } from "../llm/client";
 import { Conductor, type Turn } from "../interview/conductor";
 import { streamReply, type ReplyResult } from "../interview/dialogue";
@@ -10,6 +11,7 @@ import { getProblemDef, publicView, redactHidden, runAll } from "../interview/pr
 import { personaPrompt } from "../interview/prompts";
 import { InterviewRecorder } from "../interview/recorder";
 import { VOICES, finishInterview, markStarted } from "../interview/service";
+import { EchoGuard } from "../voice/echoGuard";
 import { isInterruption } from "../voice/turnTaker";
 import { removeLive } from "./registry";
 import { Voice, type VoiceFactory, type VoiceLike } from "./voice";
@@ -25,6 +27,10 @@ export function setVoiceFactoryForTesting(factory: VoiceFactory | null): void {
 const RECONNECT_WINDOW_MS = 90_000;
 const TICK_MS = 10_000;
 const CLOSING_AUDIO_GRACE_MS = 900;
+/** Words of unfinished speech that confirm the candidate is really interrupting (fewer only dips the interviewer's voice). */
+const BARGE_IN_WORDS = 3;
+/** How long the interviewer stays dipped when nothing more is heard. */
+const DUCK_HOLD_MS = 1_200;
 /** The data channel bypasses the HTTP rate limiters, so it has its own: a candidate can't spam the sandbox or the model. */
 const MAX_MESSAGES_PER_10S = 24;
 const MAX_SUBMISSIONS_PER_PROBLEM = 12;
@@ -91,7 +97,11 @@ export class LiveInterview {
     private readonly attempts = new Map<string, number>();
     private messageTimes: number[] = [];
     private lastSubmissionAt = 0;
+    private lastWeakLogAt = 0;
+    private duckTimer: NodeJS.Timeout | undefined;
     private silenceTimers: NodeJS.Timeout[] = [];
+    /** Recognises the interviewer's own voice leaking back through the candidate's microphone. */
+    private readonly echo = new EchoGuard();
     private suspendTimer: NodeJS.Timeout | null = null;
     private readonly tickTimer: NodeJS.Timeout;
 
@@ -144,7 +154,7 @@ export class LiveInterview {
             offer,
             { accent: this.init.interview.accent, voice: this.init.interview.voice, keyterms: this.init.plan.keyterms },
             {
-                onCandidateTurn: (text) => this.onCandidateTurn(text),
+                onCandidateTurn: (text) => this.onSpokenTurn(text),
                 onCandidateSpeaking: (text, isFinal) => this.onCandidateSpeaking(text, isFinal),
                 onClientMessage: (data) => this.onClientMessage(data),
                 onChannelOpen: () => current && this.onChannelOpen(current, resuming),
@@ -197,15 +207,33 @@ export class LiveInterview {
     // ------------------------------------------------------------------------------ candidate input
 
     private onCandidateSpeaking(text: string, isFinal: boolean): void {
+        // The interviewer's own voice coming back through the speakers is not the candidate: don't caption it,
+        // and don't stop talking because of it.
+        if (config.voiceEchoGuard && this.echo.isEcho(text, 2)) return;
+
         this.clearSilenceTimers();
-        // Cut the interviewer off only for real speech, not "mm-hmm" or a stray sound.
-        if ((this.replyActive || (this.voice?.queuedMs ?? 0) > 250) && isInterruption(text) && !this.conductor.isClosing) this.abortReply();
+        // Cut the interviewer off only for real speech, not "mm-hmm" or a stray sound. And not on the first word or two:
+        // that is exactly what a stray noise or a trace of echo looks like. Until it is clear the candidate really is
+        // talking (a few words, or a finished utterance) the interviewer only dips their voice, which recovers by itself.
+        if ((this.replyActive || (this.voice?.queuedMs ?? 0) > 250) && isInterruption(text) && !this.conductor.isClosing) {
+            if (isFinal || text.trim().split(/\s+/).length >= BARGE_IN_WORDS) this.abortReply();
+            else this.dipVoice();
+        }
 
         const now = Date.now();
         if (isFinal || now - this.lastInterimCaptionAt > 200) {
             this.lastInterimCaptionAt = now;
             this.send({ type: "CAPTION", id: this.candidateCaptionId, role: "candidate", text, final: false });
         }
+    }
+
+    /** A finished utterance from speech recognition. Typed answers skip the echo check and go straight to onCandidateTurn. */
+    private onSpokenTurn(text: string): void {
+        if (config.voiceEchoGuard && this.echo.isEcho(text)) {
+            logger.debug({ interviewId: this.id, text: text.slice(0, 80) }, "Ignored the interviewer's own voice heard through the microphone");
+            return;
+        }
+        this.onCandidateTurn(text);
     }
 
     private onCandidateTurn(text: string): void {
@@ -259,9 +287,24 @@ export class LiveInterview {
             case "END_INTERVIEW":
                 void this.finalize("candidate_ended");
                 break;
+            case "CLIENT_STATS":
+                this.noteClientStats(message);
+                break;
             case "PING":
                 break;
         }
+    }
+
+    /** The browser reports how the interviewer's voice is arriving. Counted, and a bad stretch is logged so it can be investigated. */
+    private noteClientStats(stats: { lossPercent: number; concealedPercent: number; jitterMs: number; packets: number }): void {
+        clientLossPercent.observe(stats.lossPercent);
+        clientConcealedPercent.observe(stats.concealedPercent);
+        if (stats.lossPercent < 5 && stats.concealedPercent < 8) return;
+        weakConnectionWindows.inc();
+        const now = Date.now();
+        if (now - this.lastWeakLogAt < 60_000) return;
+        this.lastWeakLogAt = now;
+        logger.warn({ interviewId: this.id, ...stats }, "The candidate's voice connection is weak: the browser is hiding gaps in the interviewer's voice");
     }
 
     private async handleSubmission(problemKey: string, language: string, code: string): Promise<void> {
@@ -318,7 +361,21 @@ export class LiveInterview {
         this.chain = this.chain.then(job).catch((error) => logger.error({ err: error, interviewId: this.id }, "Interview turn failed"));
     }
 
+    /** The candidate might be interrupting: turn the interviewer down for a moment while it becomes clear. */
+    private dipVoice(): void {
+        this.voice?.duck?.(true);
+        clearTimeout(this.duckTimer);
+        this.duckTimer = setTimeout(() => this.voice?.duck?.(false), DUCK_HOLD_MS);
+        this.duckTimer.unref();
+    }
+
+    private undip(): void {
+        clearTimeout(this.duckTimer);
+        this.voice?.duck?.(false);
+    }
+
     private abortReply(): void {
+        this.undip();
         if (this.replyActive) this.abort?.abort();
         if ((this.voice?.queuedMs ?? 0) > 0 || this.replyActive) this.voice?.stopSpeech();
     }
@@ -368,6 +425,7 @@ export class LiveInterview {
                 onSentence: (sentence) => {
                     if (sentences.length === 0) this.send({ type: "STATE", state: "speaking" });
                     sentences.push(sentence);
+                    this.echo.noteSpoken(sentence);
                     voice.speak(sentence);
                     this.send({ type: "CAPTION", id: captionId, role: "interviewer", text: sentences.join(" "), final: false });
                 },
@@ -380,6 +438,7 @@ export class LiveInterview {
                 ? "Sorry, I'm a bit overloaded right now. Give me a moment, then say that again."
                 : "Sorry, I had a technical hiccup. Could you say that again?";
             sentences.push(apology);
+            this.echo.noteSpoken(apology);
             voice.speak(apology);
             this.send({ type: "CAPTION", id: captionId, role: "interviewer", text: apology, final: false });
             // A failed reply must not move the interview on, so report it as cut off.
@@ -492,6 +551,7 @@ export class LiveInterview {
     async dispose(): Promise<void> {
         if (this.finalized) return;
         this.finalized = true;
+        clearTimeout(this.duckTimer);
         clearInterval(this.tickTimer);
         this.clearSilenceTimers();
         this.abort?.abort();

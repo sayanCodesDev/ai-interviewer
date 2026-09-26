@@ -2,6 +2,7 @@ import { useMotionValue } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
+import { monitorPlayback, tuneReceiver, type CallQuality } from "@/lib/playbackMonitor";
 import type { ServerEvent } from "@/lib/types";
 
 export type SessionStatus = "connecting" | "live" | "reconnecting" | "failed" | "ended";
@@ -10,6 +11,7 @@ export type ClientMessage =
     | { type: "SUBMIT_CODE"; problemKey: string; language: string; code: string }
     | { type: "SUBMIT_NOTES"; text: string }
     | { type: "USER_TEXT"; text: string }
+    | { type: "CLIENT_STATS"; lossPercent: number; concealedPercent: number; jitterMs: number; packets: number }
     | { type: "END_INTERVIEW" };
 
 /** The server refused the call for a reason worth acting on, not just showing. */
@@ -112,6 +114,7 @@ export function useInterviewSession({ interviewId, onEvent }: Options) {
     const [isMicMuted, setIsMicMuted] = useState(false);
     const [startedAt, setStartedAt] = useState<number | null>(null);
     const [attempt, setAttempt] = useState(0);
+    const [quality, setQuality] = useState<CallQuality>({ level: "good", lossPercent: 0, concealedPercent: 0, jitterMs: 0 });
 
     useEffect(() => {
         onEventRef.current = onEvent;
@@ -200,8 +203,22 @@ export function useInterviewSession({ interviewId, onEvent }: Options) {
                 if (!audioRef.current) return;
                 const inbound = new MediaStream([event.track]);
                 audioRef.current.srcObject = inbound;
-                peerCleanups.push(monitorStreamVolume(inbound, (volume) => aiLevel.set(volume / 100)));
                 audioRef.current.play().catch((err) => console.error("Autoplay blocked:", err));
+                tuneReceiver(pc);
+
+                // The voice is played by the audio element alone. Its level, and how healthy the connection is, come
+                // from the connection's own statistics; only a browser that reports no level falls back to a Web Audio tap.
+                peerCleanups.push(
+                    monitorPlayback(pc, {
+                        onLevel: (level) => aiLevel.set(level),
+                        onQuality: setQuality,
+                        onReport: (report) => {
+                            const channel = dataChannelRef.current;
+                            if (channel?.readyState === "open") channel.send(JSON.stringify({ type: "CLIENT_STATS", ...report } satisfies ClientMessage));
+                        },
+                        onNoLevel: () => peerCleanups.push(monitorStreamVolume(inbound, (volume) => aiLevel.set(volume / 100))),
+                    }),
+                );
             };
 
             const offer = await pc.createOffer();
@@ -295,5 +312,5 @@ export function useInterviewSession({ interviewId, onEvent }: Options) {
 
     const retry = useCallback(() => setAttempt((current) => current + 1), []);
 
-    return { audioRef, aiLevel, userLevel, status, error, isMicMuted, startedAt, toggleMic, send, retry };
+    return { audioRef, aiLevel, userLevel, status, error, isMicMuted, startedAt, quality, toggleMic, send, retry };
 }

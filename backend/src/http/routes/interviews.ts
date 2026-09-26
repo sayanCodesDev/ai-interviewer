@@ -1,6 +1,9 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
 import { z } from "zod";
+import { config } from "../../config/env";
+import { logger } from "../../observability/logger";
+import { voiceSample } from "../../voice/tts";
 import { LANGUAGES } from "../../runner/types";
 import { publicPlanSummary } from "../../interview/planBuilder";
 import { ACCENTS, VOICES, createInterview, createInterviewSchema, deleteInterview, ensurePlanning, getOwnedInterview, listInterviews, readPlan } from "../../interview/service";
@@ -81,6 +84,25 @@ export function interviewsRouter(limits: RateLimits): Router {
     router.get("/interviews", requireAuth, limits.reads, async (req, res) => {
         const { limit, cursor } = parseInput(listSchema, req.query);
         res.json(await listInterviews(currentUser(req).id, limit, cursor));
+    });
+
+    /** A spoken sample of the interviewer's voice, for the lobby's sound check. */
+    router.get("/interviews/:id/voice-sample", requireAuth, limits.voiceSample, async (req, res) => {
+        const id = parseInput(idSchema, req.params.id);
+        const row = await getOwnedInterview(currentUser(req).id, id);
+        if (config.voiceMode !== "live" || !config.deepgramApiKey) {
+            throw new HttpError(503, "The voice preview isn't available on this server.", "voice_unavailable");
+        }
+        let audio: Buffer;
+        try {
+            audio = await voiceSample(row.voice);
+        } catch (error) {
+            logger.warn({ err: error }, "Could not make the voice sample");
+            throw new HttpError(503, "We couldn't play the sample just now. Try again in a moment.", "voice_unavailable");
+        }
+        res.setHeader("Content-Type", "audio/mpeg");
+        res.setHeader("Cache-Control", "private, max-age=3600");
+        res.send(audio);
     });
 
     router.get("/interviews/:id", requireAuth, limits.reads, async (req, res) => {

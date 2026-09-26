@@ -67,6 +67,19 @@ const schema = z.object({
 
     METRICS_TOKEN: optionalString,
 
+    /**
+     * Audio held back before the interviewer starts a sentence, and before resuming after running dry. More is smoother on
+     * a slow or jittery connection (to the speech provider or to the browser) and costs that much extra delay. 0 disables it.
+     */
+    VOICE_PREROLL_MS: optionalInt(350),
+    VOICE_RESUME_MS: optionalInt(220),
+    /** The most the buffer may grow to when the speech provider is slower than real time. Set to the pre-roll to turn this off. */
+    VOICE_MAX_LEAD_MS: optionalInt(2000),
+    /** Ignore the interviewer's own voice when it leaks back through the candidate's microphone. On by default. */
+    VOICE_ECHO_GUARD: booleanFlag(true),
+    /** Volume boost for the interviewer's voice, in decibels, with a limiter so loud syllables don't crackle. 0 turns it off. */
+    VOICE_GAIN_DB: optionalInt(3),
+
     /** "text" skips speech recognition and synthesis: the interview runs over the data channel and you type. For development and tests only. */
     VOICE_MODE: z.enum(["live", "text"]).default("live"),
 });
@@ -114,6 +127,11 @@ export interface AppConfig {
 
     metricsToken?: string;
     voiceMode: "live" | "text";
+    voicePreRollMs: number;
+    voiceResumeMs: number;
+    voiceMaxLeadMs: number;
+    voiceGainDb: number;
+    voiceEchoGuard: boolean;
 }
 
 function parseTrustProxy(raw: string | undefined): boolean | number | string {
@@ -231,6 +249,11 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env, warn: (messa
 
         metricsToken: raw.METRICS_TOKEN,
         voiceMode: raw.VOICE_MODE,
+        voicePreRollMs: Math.min(raw.VOICE_PREROLL_MS, 3_000),
+        voiceResumeMs: Math.min(raw.VOICE_RESUME_MS, 3_000),
+        voiceMaxLeadMs: Math.min(raw.VOICE_MAX_LEAD_MS, 5_000),
+        voiceGainDb: Math.min(raw.VOICE_GAIN_DB, 9),
+        voiceEchoGuard: raw.VOICE_ECHO_GUARD,
     };
 }
 
