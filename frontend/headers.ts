@@ -17,7 +17,13 @@ export function inlineScriptHashes(html: string): string[] {
  * animation library set them, and so does the code editor); scripts do not, only the hashed inline theme
  * snippet and our own files run.
  */
-export function buildHeaders({ backendUrl, scriptHashes }: { backendUrl: string; scriptHashes: string[] }): string {
+interface HeaderInput {
+  backendUrl: string;
+  scriptHashes: string[];
+}
+
+/** The hardening headers every response carries, as name/value pairs, so each hosting format can render them. */
+export function securityHeaders({ backendUrl, scriptHashes }: HeaderInput): Array<[string, string]> {
   const api = new URL(backendUrl).origin;
   const csp = [
     "default-src 'self'",
@@ -36,16 +42,27 @@ export function buildHeaders({ backendUrl, scriptHashes }: { backendUrl: string;
     ...(api.startsWith("https:") ? ["upgrade-insecure-requests"] : []),
   ].join("; ");
 
+  return [
+    ["Content-Security-Policy", csp],
+    ["X-Content-Type-Options", "nosniff"],
+    ["X-Frame-Options", "DENY"],
+    ["Referrer-Policy", "strict-origin-when-cross-origin"],
+    ["Permissions-Policy", "microphone=(self), camera=(), geolocation=(), payment=(), usb=()"],
+    ["Strict-Transport-Security", "max-age=31536000"],
+    ["Cross-Origin-Opener-Policy", "same-origin"],
+  ];
+}
+
+/** nginx `add_header` lines for the same headers (include this in the server block and in any location that adds its own headers). */
+export function buildNginxHeaders(input: HeaderInput): string {
+  return securityHeaders(input).map(([name, value]) => `add_header ${name} "${value.replace(/(["\\$])/g, "\\$1")}" always;`).join("\n") + "\n";
+}
+
+export function buildHeaders(input: HeaderInput): string {
   const immutable = "  Cache-Control: public, max-age=31536000, immutable";
   return [
     "/*",
-    `  Content-Security-Policy: ${csp}`,
-    "  X-Content-Type-Options: nosniff",
-    "  X-Frame-Options: DENY",
-    "  Referrer-Policy: strict-origin-when-cross-origin",
-    "  Permissions-Policy: microphone=(self), camera=(), geolocation=(), payment=(), usb=()",
-    "  Strict-Transport-Security: max-age=31536000",
-    "  Cross-Origin-Opener-Policy: same-origin",
+    ...securityHeaders(input).map(([name, value]) => `  ${name}: ${value}`),
     "/chunk-*",
     immutable,
     "/font-*",

@@ -1,7 +1,7 @@
 import tailwind from "bun-plugin-tailwind";
 import { rm, cp, readdir } from "node:fs/promises";
 import path from "node:path";
-import { buildHeaders, inlineScriptHashes } from "./headers";
+import { buildHeaders, buildNginxHeaders, inlineScriptHashes } from "./headers";
 
 const outdir = path.join(process.cwd(), "dist");
 await rm(outdir, { recursive: true, force: true });
@@ -118,10 +118,10 @@ const { prerenderSite } = await import("./prerender");
 await prerenderSite({ outdir, fontFiles: preloadFonts });
 
 const backendUrl = JSON.parse(envVars["import.meta.env.VITE_BACKEND_URL"] ?? '"http://localhost:2000"') || "http://localhost:2000";
-await Bun.write(
-  path.join(outdir, "_headers"),
-  buildHeaders({ backendUrl, scriptHashes: inlineScriptHashes(await Bun.file(path.join(outdir, "app.html")).text()) }),
-);
+const headerInput = { backendUrl, scriptHashes: inlineScriptHashes(await Bun.file(path.join(outdir, "app.html")).text()) };
+await Bun.write(path.join(outdir, "_headers"), buildHeaders(headerInput));
+// The same headers for nginx (used by frontend/Dockerfile). Not served publicly: nginx.conf includes it from /etc/nginx.
+await Bun.write(path.join(outdir, "nginx-headers.conf"), buildNginxHeaders(headerInput));
 
 for (const output of result.outputs) {
   console.log(` ${path.relative(process.cwd(), output.path)}  ${(output.size / 1024).toFixed(1)} KB`);

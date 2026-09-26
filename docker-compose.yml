@@ -1,0 +1,70 @@
+# Everything on one machine:  cp backend/.env.example backend/.env  (fill it in; ALLOWED_ORIGINS must include
+# http://localhost:8080 or the browser's calls to the API are refused), then
+#   docker build -t ai-interviewer-runner:latest backend/runner     # the code sandbox image, built once
+#   docker compose up -d --build
+# The site is on http://localhost:8080 and the API on http://localhost:2000.
+#
+# Read docs/DEPLOYMENT.md first: WebRTC needs UDP ports reachable from the browser, and running candidate code needs
+# Docker access, which the socket proxy below limits to what the sandbox uses.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: interviewer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in your shell or a .env file next to this compose file}
+      POSTGRES_DB: interviewer
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U interviewer"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # The API talks to Docker through this proxy, which only allows the calls a sandbox run needs. It is not a
+  # security boundary against a compromised API, only against accidents: see docs/DEPLOYMENT.md.
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:0.3
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      POST: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      docker-proxy:
+        condition: service_started
+    env_file: ./backend/.env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://interviewer:${POSTGRES_PASSWORD}@db:5432/interviewer
+      DOCKER_HOST: tcp://docker-proxy:2375
+      CODE_RUNNER: docker
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      # Media ports: keep this range in step with the published UDP ports below and with your firewall.
+      WEBRTC_PORT_MIN: 10000
+      WEBRTC_PORT_MAX: 10039
+    ports:
+      - "2000:2000"
+      - "10000-10039:10000-10039/udp"
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:2000}
+        VITE_SITE_URL: ${VITE_SITE_URL:-http://localhost:8080}
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+
+volumes:
+  dbdata:

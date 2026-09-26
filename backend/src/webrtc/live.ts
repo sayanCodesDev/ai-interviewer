@@ -199,7 +199,7 @@ export class LiveInterview {
     private onCandidateSpeaking(text: string, isFinal: boolean): void {
         this.clearSilenceTimers();
         // Cut the interviewer off only for real speech, not "mm-hmm" or a stray sound.
-        if ((this.replyActive || (this.voice?.queuedMs ?? 0) > 250) && isInterruption(text)) this.abortReply();
+        if ((this.replyActive || (this.voice?.queuedMs ?? 0) > 250) && isInterruption(text) && !this.conductor.isClosing) this.abortReply();
 
         const now = Date.now();
         if (isFinal || now - this.lastInterimCaptionAt > 200) {
@@ -209,7 +209,8 @@ export class LiveInterview {
     }
 
     private onCandidateTurn(text: string): void {
-        this.abortReply();
+        // Let the goodbye finish: the interview is over either way, and the candidate should hear what happens next.
+        if (!this.conductor.isClosing) this.abortReply();
         this.send({ type: "CAPTION", id: this.candidateCaptionId, role: "candidate", text, final: true });
         this.candidateCaptionId = `c${++this.captionSeq}`;
         this.enqueue(async () => {

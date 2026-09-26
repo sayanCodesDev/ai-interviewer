@@ -6,7 +6,9 @@ import helmet from "helmet";
 import { pinoHttp } from "pino-http";
 import { prisma } from "../../lib/prisma";
 import { config } from "../config/env";
+import crypto from "node:crypto";
 import { schemaReady } from "../db/schema";
+import { registry } from "../observability/metrics";
 import { logger } from "../observability/logger";
 import { errorHandler, notFoundHandler, originGuard, requestId } from "./middleware";
 import { createRateLimits, type RateLimits } from "./rateLimits";
@@ -69,6 +71,23 @@ export function createApp(options: AppOptions = {}): Express {
             logger.error({ err: error }, "Readiness check failed");
             res.status(503).json({ status: "unavailable" });
         }
+    });
+
+    // Prometheus metrics. Off unless METRICS_TOKEN is set, and then only for a caller that presents it.
+    app.get("/metrics", async (req, res) => {
+        const token = config.metricsToken;
+        if (!token) {
+            res.status(404).end();
+            return;
+        }
+        const presented = /^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1] ?? "";
+        const digest = (value: string) => crypto.createHash("sha256").update(value).digest();
+        if (!crypto.timingSafeEqual(digest(presented), digest(token))) {
+            res.status(401).setHeader("WWW-Authenticate", "Bearer").end();
+            return;
+        }
+        res.setHeader("Content-Type", registry.contentType);
+        res.end(await registry.metrics());
     });
 
     app.use(express.json({ limit: "256kb" }));

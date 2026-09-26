@@ -1,6 +1,6 @@
 import { config } from "./config/env";
 import { checkSchema, schemaHelp } from "./db/schema";
-import { purgeExpiredSessions } from "./auth/sessions";
+import { startMaintenance, stopMaintenance } from "./maintenance";
 import { createApp } from "./http/app";
 import { accountRouter } from "./http/routes/account";
 import { interviewsRouter } from "./http/routes/interviews";
@@ -39,11 +39,8 @@ const server = app.listen(config.port, () => {
 
 startReportWorker();
 
-// Expired refresh tokens can never be used again; sweep them out once a day.
-const sweep = setInterval(() => {
-    purgeExpiredSessions().catch((err) => logger.warn({ err }, "Could not purge expired sessions"));
-}, 24 * 60 * 60 * 1000);
-sweep.unref();
+// Housekeeping: expired sessions, orphaned interviews, data past its retention period.
+startMaintenance();
 
 let shuttingDown = false;
 async function shutdown(signal: string) {
@@ -53,6 +50,7 @@ async function shutdown(signal: string) {
     // New HTTP requests are refused by closing the listener; running calls (WebRTC) keep going for a while.
     server.close();
     stopReportWorker();
+    stopMaintenance();
     await drainLive(Number(process.env.SHUTDOWN_GRACE_MS) || 60_000);
     process.exit(0);
 }

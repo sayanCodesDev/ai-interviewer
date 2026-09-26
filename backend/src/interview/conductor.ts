@@ -129,6 +129,11 @@ export class Conductor {
         return this.ended !== null;
     }
 
+    /** The closing words are being (or about to be) said. Nothing the candidate does now changes how the interview ends. */
+    get isClosing(): boolean {
+        return this.closing;
+    }
+
     /** The coding problem currently open, if any. */
     get currentProblemKey(): string | null {
         return this.step.t === "coding" && !this.closing ? (this.item as CodingItem).problemKey : null;
@@ -365,6 +370,13 @@ export class Conductor {
     finishTurn(turn: Turn, reply: ReplyResult): Outcome {
         const none: Outcome = { next: null, events: [] };
         this.record("interviewer", reply.text, reply.interrupted);
+        // The closing is always the last thing said, whether or not the model remembered its marker, and it ends the
+        // interview even if the candidate spoke over it. Everything else about the conversation is frozen once the
+        // closing starts, so "no result" here would leave the call open forever.
+        if (turn.kind === "close") {
+            this.ended = "completed";
+            return { next: null, events: [], ended: "completed" };
+        }
         if (reply.interrupted) return none;
 
         const markers = reply.markers.filter((m) => turn.allowedMarkers.includes(m));
@@ -432,11 +444,6 @@ export class Conductor {
 
             case "force_advance":
                 return this.advance(false);
-
-            case "close":
-                // The closing is always the last thing said, whether or not the model remembered its marker.
-                this.ended = "completed";
-                return { next: null, events: [], ended: "completed" };
 
             default:
                 return none;
