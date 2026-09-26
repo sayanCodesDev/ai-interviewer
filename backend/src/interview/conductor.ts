@@ -99,6 +99,8 @@ const BRIEF_ANSWER_WORDS = 6;
 /** After this many very short answers in a row to one question, stop pressing and move on. */
 const MAX_BRIEF_IN_A_ROW = 3;
 const HINT_LIMIT = 3;
+/** One answer this long is a monologue: the interviewer is told to pick a thread rather than react to all of it. */
+const RAMBLING_WORDS = 170;
 /** Saying so, plainly, that they do not know or have not done something. Met with kindness once, and then with a move on. */
 const ADMITS_GAP = /\b(?:don'?t|do not|didn'?t|did not) know\b|\bno idea\b|\bnot (?:really )?sure\b|\b(?:haven'?t|have not|never) (?:used|worked|done|tried|touched|heard)\b|\bnot (?:very )?familiar\b|\bno experience\b/i;
 /** How much of the candidate's editor the interviewer is shown: enough to talk about, not enough to cost a lot of tokens every turn. */
@@ -784,7 +786,7 @@ export class Conductor {
         const canProbe = view.probesUsed < view.maxProbes && !moveOn && gap !== "again";
         // Closing a question on the strength of a sentence or two is how an interview feels like a form being filled in.
         const mayMoveOn = !cutOff && (moveOn || gap === "again" || (gap !== "first" && (!canProbe || step.words >= MIN_WORDS_BEFORE_MOVING_ON || step.probes >= 1)));
-        return this.turn("respond", directives.respond(view, brief, moveOn, mayMoveOn, gap, cutOff), [], mayMoveOn ? ["ADVANCE"] : []);
+        return this.turn("respond", directives.respond(view, brief, moveOn, mayMoveOn, gap, cutOff, this.lastCandidateWords > RAMBLING_WORDS), [], mayMoveOn ? ["ADVANCE"] : []);
     }
 
     /**

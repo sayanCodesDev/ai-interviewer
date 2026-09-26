@@ -903,6 +903,23 @@ describe("Conductor: a submission that settles the problem keeps its promise", (
     });
 });
 
+describe("Conductor: honesty about what the interviewer knows", () => {
+    test("when the candidate asks about the company, the interviewer may not invent facts", async () => {
+        const rig = makeRig("quick");
+        await rig.speak(rig.conductor.begin());
+        let turn: Turn | null = null;
+        for (let i = 0; i < 60 && !rig.conductor.isEnded; i++) {
+            const { step, phase, round } = rig.conductor.position;
+            if (/wrapup/.test(round) && step === "talk") { turn = rig.conductor.onCandidate("What tech stack does your team use, and how big is it?")!; break; }
+            if (step === "coding" && phase !== "followup") await rig.speak(rig.conductor.onSubmission({ problemKey: problemKey(rig), language: "python", code: "x", run: PASSING }));
+            else await rig.speak(rig.conductor.onCandidate(SUBSTANTIAL));
+        }
+        assert.ok(turn, "reached the candidate's questions");
+        assert.match(turn!.directive, /Never invent details about their stack/);
+        assert.match(turn!.directive, /as an AI interviewer you don't have that information/);
+    });
+});
+
 describe("summariseRun", () => {
     test("describes results in words and never includes expected values", () => {
         assert.equal(summariseRun(PASSING), "5 of 5 tests passed.");
