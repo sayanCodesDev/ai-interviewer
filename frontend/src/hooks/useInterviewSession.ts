@@ -206,7 +206,7 @@ export function useInterviewSession({ interviewId, onEvent }: Options) {
                 audioRef.current.play().catch((err) => console.error("Autoplay blocked:", err));
                 tuneReceiver(pc);
 
-                // The voice is played by the audio element alone. Its level, and how healthy the connection is, come
+                // The voice is played by the audio element alone. Its level and the connection's health come
                 // from the connection's own statistics; only a browser that reports no level falls back to a Web Audio tap.
                 peerCleanups.push(
                     monitorPlayback(pc, {

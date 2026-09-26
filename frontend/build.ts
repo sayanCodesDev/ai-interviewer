@@ -34,6 +34,11 @@ for (const [key, value] of Object.entries(process.env)) {
 for (const key of ["VITE_BACKEND_URL", "VITE_SITE_URL", "VITE_CONTACT_EMAIL"]) {
   envVars[`import.meta.env.${key}`] ??= JSON.stringify("");
 }
+// The app reads these as bare globals (src/globals.d.ts), which the bundler replaces with the values.
+const settingGlobals: Record<string, string> = {};
+for (const key of ["VITE_BACKEND_URL", "VITE_SITE_URL", "VITE_CONTACT_EMAIL"]) {
+  settingGlobals[`__${key}__`] = envVars[`import.meta.env.${key}`]!;
+}
 const isSet = (key: string) => JSON.parse(envVars[`import.meta.env.${key}`] ?? '""') !== "";
 
 if (!isSet("VITE_BACKEND_URL")) {
@@ -68,7 +73,7 @@ const result = await Bun.build({
     "import.meta.env.PROD": "true",
     "import.meta.env.DEV": "false",
     "import.meta.env.MODE": JSON.stringify("production"),
-    ...envVars,
+    ...settingGlobals,
   },
 });
 
@@ -134,7 +139,7 @@ for (const output of result.outputs.filter((o) => o.path.endsWith(".css"))) {
 
 // Turn the public pages into real HTML files for crawlers and first paint. The site URL and contact
 // address are read from the environment at run time by the pages themselves.
-for (const [key, value] of Object.entries(envVars)) process.env[key.replace("import.meta.env.", "")] = JSON.parse(value);
+for (const [name, value] of Object.entries(settingGlobals)) (globalThis as Record<string, unknown>)[name] = JSON.parse(value);
 const { prerenderSite } = await import("./prerender");
 await prerenderSite({ outdir, fontFiles: preloadFonts });
 
