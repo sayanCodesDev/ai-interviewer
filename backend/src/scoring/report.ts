@@ -17,7 +17,7 @@ export async function generateReport(interviewId: string): Promise<ReportData> {
     const turns: TurnRow[] = row.turns.map((t) => ({ seq: t.seq, role: t.role, roundKey: t.roundKey, text: t.text, offsetMs: t.offsetMs, interrupted: t.interrupted }));
     const submissions: SubmissionRow[] = row.submissions.map((s) => ({
         problemKey: s.problemKey, kind: s.kind, attempt: s.attempt, language: s.language, code: s.code,
-        passed: s.passed, total: s.total, status: s.status, createdAt: s.createdAt,
+        passed: s.passed, total: s.total, status: s.status, createdAt: s.createdAt, results: s.results,
     }));
 
     const report = await evaluateInterview({

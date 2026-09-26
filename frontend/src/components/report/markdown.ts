@@ -29,6 +29,14 @@ export function buildMarkdown(data: ReportResponse): string {
                 if (p.feedback) lines.push(p.feedback, "");
                 if (p.complexity.stated) lines.push(`Complexity you stated: ${p.complexity.stated} (${p.complexity.verdict.replace("_", " ")}). Intended: time ${p.intendedComplexity.time}, space ${p.intendedComplexity.space}.`, "");
                 if (p.code) lines.push(fence(p.code, p.language), "");
+                if (p.review && p.review.length > 0) {
+                    lines.push("Code review:", "");
+                    for (const note of p.review) {
+                        const where = note.endLine > note.line ? `lines ${note.line}-${note.endLine}` : `line ${note.line}`;
+                        lines.push(`- **${where}** (${note.severity === "praise" ? "done well" : note.severity}): ${note.comment}`);
+                    }
+                    lines.push("");
+                }
             }
         }
 

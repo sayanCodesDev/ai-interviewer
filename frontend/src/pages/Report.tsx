@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
+import { CodeReview } from "@/components/report/CodeReview";
 import { ScoreRing } from "@/components/report/ScoreRing";
 import { Transcript } from "@/components/report/Transcript";
 import { buildMarkdown, buildTranscriptText, downloadText } from "@/components/report/markdown";
@@ -114,11 +115,11 @@ function ProblemCard({ p }: { p: ProblemReport }) {
             </div>
 
             {p.code && (
-                <details className="group mt-5 print:open">
+                <details className="group mt-5 print:open" open={(p.review?.length ?? 0) > 0}>
                     <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm font-medium print:hidden">
-                        <ChevronDown className="size-4 transition-transform group-open:rotate-180" /> Your final code
+                        <ChevronDown className="size-4 transition-transform group-open:rotate-180" /> {(p.review?.length ?? 0) > 0 ? "Your code, reviewed line by line" : "Your final code"}
                     </summary>
-                    <pre className="mt-3 max-h-96 overflow-auto rounded-lg border bg-night p-4 font-mono text-[12.5px] leading-relaxed text-night-foreground">{p.code}</pre>
+                    <CodeReview code={p.code} notes={p.review} />
                 </details>
             )}
         </article>

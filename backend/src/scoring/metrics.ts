@@ -19,6 +19,8 @@ export interface SubmissionRow {
     total: number;
     status: string;
     createdAt: Date;
+    /** Per-test outcomes as stored with the submission. Hidden tests carry only a label and a status. */
+    results?: unknown;
 }
 
 export interface ProblemFacts {
@@ -30,6 +32,8 @@ export interface ProblemFacts {
     finalStatus: string;
     finalLanguage: string;
     finalCode: string;
+    /** The tests the last submission did not pass, by name and how they failed ("empty input (wrong answer)"). Never their data. */
+    failing: string[];
     hintsUsed: number;
     movedOn: boolean;
     /** 0 to 10, from the tests, with small penalties for extra attempts and hints. */
@@ -56,6 +60,17 @@ const FILLERS = /\b(?:um+|uh+|er+|erm|you know|i mean|sort of|kind of)\b/gi;
 const PENALTY_PER_EXTRA_ATTEMPT = 0.6;
 const PENALTY_PER_HINT = 0.3;
 
+const HOW_IT_FAILED: Record<string, string> = { fail: "wrong answer", timeout: "too slow", error: "runtime error", skipped: "not reached" };
+
+/** The names of the tests that did not pass, from a stored run. */
+export function failingTests(results: unknown): string[] {
+    if (!Array.isArray(results)) return [];
+    return results
+        .filter((r): r is { label?: unknown; id?: unknown; status: string } => Boolean(r) && typeof r === "object" && typeof (r as { status?: unknown }).status === "string" && (r as { status: string }).status !== "pass" && (r as { status: string }).status !== "ran")
+        .slice(0, 6)
+        .map((r) => `${String(r.label ?? r.id ?? "a test").slice(0, 60)} (${HOW_IT_FAILED[r.status] ?? r.status})`);
+}
+
 export function computeMetrics(input: { turns: TurnRow[]; submissions: SubmissionRow[]; startedAt: Date | null; endedAt: Date | null }): InterviewMetrics {
     const candidate = input.turns.filter((t) => t.role === "CANDIDATE");
     const words = candidate.reduce((n, t) => n + t.text.split(/\s+/).filter(Boolean).length, 0);
@@ -65,7 +80,7 @@ export function computeMetrics(input: { turns: TurnRow[]; submissions: Submissio
     const touch = (key: string): ProblemFacts => {
         let facts = problems.get(key);
         if (!facts) {
-            facts = { problemKey: key, runs: 0, attempts: 0, bestPassed: 0, total: 0, finalStatus: "NOT_SUBMITTED", finalLanguage: "", finalCode: "", hintsUsed: 0, movedOn: false, correctness: 0 };
+            facts = { problemKey: key, runs: 0, attempts: 0, bestPassed: 0, total: 0, finalStatus: "NOT_SUBMITTED", finalLanguage: "", finalCode: "", failing: [], hintsUsed: 0, movedOn: false, correctness: 0 };
             problems.set(key, facts);
         }
         return facts;
@@ -83,6 +98,7 @@ export function computeMetrics(input: { turns: TurnRow[]; submissions: Submissio
         facts.finalStatus = s.status;
         facts.finalLanguage = s.language;
         facts.finalCode = s.code;
+        facts.failing = failingTests(s.results);
     }
 
     // Hints and "moved on" are logged as system lines naming the problem by title, so map them back by title.
