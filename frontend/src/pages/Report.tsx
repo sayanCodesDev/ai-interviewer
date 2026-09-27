@@ -407,6 +407,7 @@ export function Report() {
                                                 <span className={cn("label-mono rounded-full border px-2 py-0.5", s.priority === "high" && "border-transparent bg-foreground text-background")}>{s.priority} priority</span>
                                             </div>
                                             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{s.why}</p>
+                                            <Quotes items={s.evidence ?? []} onJump={jumpTo} />
                                             <ul className="mt-4 grid gap-2">
                                                 {s.actions.map((a) => (
                                                     <li key={a} className="flex items-start gap-3 text-sm">

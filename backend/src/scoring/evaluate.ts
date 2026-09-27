@@ -9,7 +9,7 @@ import { computeMetrics, type InterviewMetrics, type ProblemFacts, type Submissi
 import { RESOURCE_TAGS, applicableDimensions, bandFor, overallScore, resourcesFor, type Band, type Dimension, type DimensionKey } from "./rubric";
 
 /** Bump when the rubric or prompts change materially, so old reports can be told apart from new ones. */
-export const PROMPT_VERSION = "2026-09-v3-mapreduce-code-review";
+export const PROMPT_VERSION = "2026-09-v4-mapreduce-grounded-study-plan";
 
 export const DISCLAIMER = "This report is AI-generated practice feedback based on one conversation. It is not a hiring decision, and scores are estimates: use them to find what to practise, not as a verdict.";
 
@@ -76,7 +76,7 @@ export interface ReportData {
     problems: ProblemReport[];
     strengths: Array<{ title: string; detail: string; evidence: Evidence[] }>;
     improvements: Array<{ title: string; detail: string; priority: 1 | 2 | 3; evidence: Evidence[] }>;
-    studyPlan: Array<{ topic: string; why: string; actions: string[]; priority: "high" | "medium" | "low"; resources: Array<{ title: string; url: string }> }>;
+    studyPlan: Array<{ topic: string; why: string; actions: string[]; priority: "high" | "medium" | "low"; resources: Array<{ title: string; url: string }>; evidence: Evidence[] }>;
     metrics: Omit<InterviewMetrics, "problems"> & { segmentsAnalysed: number; segmentsTotal: number };
     disclaimer: string;
     generatedBy: { model: string; promptVersion: string };
@@ -124,6 +124,7 @@ const synthesisSchema = z.object({
         topic: text(90), why: text(350), actions: list(4, 240),
         priority: z.enum(["high", "medium", "low"]).catch("medium"),
         resourceTags: list(4, 40).catch([]),
+        sources: list(4, 20).catch([]),
     })).transform((s) => s.filter((x) => x.topic).slice(0, 5)),
 });
 type Synthesis = z.infer<typeof synthesisSchema>;
@@ -337,8 +338,14 @@ async function analyseSegment(input: EvaluationInput, segment: Segment, metrics:
 
 function synthesisPrompt(input: EvaluationInput, results: SegmentResult[], metrics: InterviewMetrics, dims: Dimension[]) {
     const system = `SYNTHESIS. You are a senior engineer and interview coach finishing the feedback report for a mock ${input.interview.level} ${input.interview.targetRole} interview. You are given analyses of each part, written by an assistant, plus objective facts. Combine them into one coherent, honest, encouraging report written to the candidate as "you".
-Rules: do not invent facts beyond the analyses; strengths and improvements must each list the ids of the analysed items they come from in "sources" (like "s-open.s1" or "p2.g1"), merging duplicates; order improvements by importance (priority 1 highest). Study plan: 3 to 5 prioritised topics with concrete practice actions; for resourceTags choose only from: ${RESOURCE_TAGS.join(", ")}. ${UNTRUSTED_NOTICE}
-Reply with ONE JSON object: {"summary": "3-5 sentences on how the interview went", "dimensionSummaries": {${dims.filter((d) => !d.objective).map((d) => `"${d.key}": "1-2 sentences"`).join(", ")}}, "strengths": [{"title": "", "detail": "", "sources": ["s-open.s1"]}], "improvements": [{"title": "", "detail": "", "priority": 1, "sources": ["p1.g1"]}], "studyPlan": [{"topic": "", "why": "", "actions": [""], "priority": "high", "resourceTags": ["algorithms"]}]}. At most 5 strengths and 6 improvements.`;
+Rules: do not invent facts beyond the analyses; strengths and improvements must each list the ids of the analysed items they come from in "sources" (like "s-open.s1" or "p2.g1"), merging duplicates; order improvements by importance (priority 1 highest). ${UNTRUSTED_NOTICE}
+Study plan — this is the part the candidate will actually act on, so make every topic earn its place:
+- 3 to 5 topics, each traced to specific gaps from this interview: list the ids they come from in "sources", exactly like strengths and improvements. A topic with no matching gap is a guess, not a finding: leave it out.
+- "why" says what happened in THIS interview that points to it, not a generic reason a person in this role might need it (weak: "system design is a common interview topic"; strong: "you weren't sure how to keep the cache and the database consistent when asked about the write path").
+- Each topic needs at least one action the candidate could start today, concrete enough to act on without more research (weak: "practice more dynamic programming"; strong: "solve 5 knapsack-variant problems on NeetCode, then explain the recurrence out loud before coding each one"). Reference the actual technology, problem type or mistake from the interview by name where it fits.
+- Order by how much it would have raised the outcome of this specific interview, not by general importance to the role.
+- For resourceTags choose only tags that fit the topic, only from: ${RESOURCE_TAGS.join(", ")}. An empty list is better than a poor fit.
+Reply with ONE JSON object: {"summary": "3-5 sentences on how the interview went", "dimensionSummaries": {${dims.filter((d) => !d.objective).map((d) => `"${d.key}": "1-2 sentences"`).join(", ")}}, "strengths": [{"title": "", "detail": "", "sources": ["s-open.s1"]}], "improvements": [{"title": "", "detail": "", "priority": 1, "sources": ["p1.g1"]}], "studyPlan": [{"topic": "", "why": "", "actions": [""], "priority": "high", "resourceTags": ["algorithms"], "sources": ["p1.g1"]}]}. At most 5 strengths and 6 improvements.`;
 
     const parts = results.map((r) => {
         const items = [...r.items].map(([id, i]) => `  ${id} ${i.kind === "strength" ? "STRENGTH" : `GAP p${i.priority}`}: ${i.title}. ${i.detail}`).join("\n");
@@ -477,7 +484,7 @@ export function assemble(
         problems: problemReports,
         strengths: synthesis.strengths.map((s) => ({ title: s.title, detail: s.detail, evidence: gather(s.sources) })),
         improvements: synthesis.improvements.map((s) => ({ title: s.title, detail: s.detail, priority: s.priority as 1 | 2 | 3, evidence: gather(s.sources) })).sort((a, b) => a.priority - b.priority),
-        studyPlan: synthesis.studyPlan.map((s) => ({ topic: s.topic, why: s.why, actions: s.actions, priority: s.priority, resources: resourcesFor(s.resourceTags) })),
+        studyPlan: synthesis.studyPlan.map((s) => ({ topic: s.topic, why: s.why, actions: s.actions, priority: s.priority, resources: resourcesFor(s.resourceTags), evidence: gather(s.sources) })),
         metrics: {
             durationMinutes: metrics.durationMinutes, candidateTurns: metrics.candidateTurns, candidateWords: metrics.candidateWords,
             averageWordsPerTurn: metrics.averageWordsPerTurn, fillersPer100Words: metrics.fillersPer100Words, hintsUsed: metrics.hintsUsed,
