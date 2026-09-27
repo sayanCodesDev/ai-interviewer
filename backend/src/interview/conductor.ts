@@ -327,19 +327,23 @@ export class Conductor {
             .map((r) => ({ title: r.title, text: this.notes.get(r.key)! }));
         const system = [this.options.systemPrompt, roundNotesBlock(earlier)].filter(Boolean).join("\n\n");
 
-        // The current round in full, plus a little of the one before so a transition has context.
+        // The current round in full, plus a little of the one before so a transition has context. System notes
+        // (a submission arrived, a hint was given) are kept for the CURRENT round only: they are how the model still
+        // knows what happened several turns later, not just in the one turn right after it happened. Dropping them
+        // entirely, as before, meant a candidate saying "I just submitted that" a turn or two later got told nothing
+        // had arrived, because nothing about it survived in what the model could see.
         const currentRound = this.history.filter((u) => u.roundKey === this.round.key);
         const previous = this.history.filter((u) => u.roundKey !== this.round.key && u.role !== "system").slice(-2);
         const window = [...previous, ...currentRound];
 
         const messages: ChatMessage[] = [];
         let chars = 0;
-        const spoken = window.filter((u) => u.role !== "system");
-        for (let i = spoken.length - 1; i >= 0 && messages.length < MAX_HISTORY_MESSAGES; i--) {
-            const u = spoken[i]!;
+        for (let i = window.length - 1; i >= 0 && messages.length < MAX_HISTORY_MESSAGES; i--) {
+            const u = window[i]!;
             chars += u.text.length;
             if (chars > MAX_HISTORY_CHARS) break;
-            messages.unshift({ role: u.role === "interviewer" ? "assistant" : "user", content: u.role === "candidate" ? sanitizeUntrusted(u.text, 1_500) : u.text });
+            const role = u.role === "interviewer" ? "assistant" : u.role === "system" ? "system" : "user";
+            messages.unshift({ role, content: u.role === "candidate" ? sanitizeUntrusted(u.text, 1_500) : u.text });
         }
 
         if (!messages.some((m) => m.role === "user")) messages.push({ role: "user", content: "[The candidate has just joined the call.]" });
@@ -418,7 +422,12 @@ export class Conductor {
         if (this.ended || this.closing || step.t !== "coding" || (this.item as CodingItem).problemKey !== sub.problemKey) return null;
         this.pendingMove = null;
         // Once the problem is solved and the follow-up questions have begun, further submissions are recorded but not reviewed.
-        if (step.phase === "followup") return null;
+        // Recording it here (not just returning) matters: without it, if the candidate later says "I just submitted an
+        // update", the model has no memory of it at all and correctly, confusingly, says it never arrived.
+        if (step.phase === "followup") {
+            this.recordSystem(`Candidate submitted an updated ${sub.language} solution for "${this.problem().title}" after it was already solved (not reviewed further): ${summariseRun(sub.run)}`);
+            return null;
+        }
 
         step.attempt += 1;
         step.phase = "working";

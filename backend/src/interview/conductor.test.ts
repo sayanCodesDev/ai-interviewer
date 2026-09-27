@@ -460,7 +460,7 @@ describe("Conductor: context for the model", () => {
 });
 
 describe("Conductor: session facts in the transcript", () => {
-    test("round changes, hints and submissions are recorded as system entries, and never shown to the model as speech", async () => {
+    test("round changes, hints and submissions are recorded as system entries, never attributed as something someone said", async () => {
         const rig = makeRig("quick");
         await toFirstProblem(rig);
         await rig.speak(rig.conductor.onCandidate("I'm stuck, can I have a hint please?"), () => "Sure, think about it this way. [[HINT]]");
@@ -472,10 +472,44 @@ describe("Conductor: session facts in the transcript", () => {
         assert.ok(system.some((t) => /^Hint 1 of 3 given/.test(t)));
         assert.ok(system.some((t) => /submitted python code .* 5 of 5 tests passed/.test(t)));
 
+        // These facts may now legitimately appear in what is sent to the model (see the next test) — the
+        // invariant that matters is that they are never mislabelled as something the candidate or interviewer said.
         const turn = rig.conductor.onCandidate("It runs in linear time because of the single pass through the array.")!;
         for (const message of rig.conductor.buildMessages(turn).slice(1, -1)) {
-            assert.ok(!/^Part \d of/.test(message.content) && !/^Hint \d/.test(message.content), message.content);
+            if (/^Part \d of/.test(message.content) || /^Hint \d/.test(message.content)) {
+                assert.equal(message.role, "system", `a session fact must never be attributed as speech: ${message.content}`);
+            }
         }
+    });
+
+    test("a fact recorded earlier in the round is still visible to the model turns later, not just the one right after it", async () => {
+        const rig = makeRig("quick");
+        await toFirstProblem(rig);
+        await rig.speak(rig.conductor.onSubmission({ problemKey: problemKey(rig), language: "python", code: "x", run: PASSING }));
+        await rig.speak(rig.conductor.onCandidate("It's order n time because of the single pass."), () => "Good, anything else?");
+
+        const turn = rig.conductor.onCandidate("Just checking you saw the code I submitted a minute ago.")!;
+        const messages = rig.conductor.buildMessages(turn);
+        assert.ok(
+            messages.some((m) => m.role === "system" && /submitted python code/.test(m.content)),
+            "the submission should still be in context, not forgotten after the one turn right after it happened",
+        );
+    });
+
+    test("resubmitting after the problem is already solved is still recorded, even though it isn't reviewed again", async () => {
+        const rig = makeRig("quick");
+        await toFirstProblem(rig);
+        const key = problemKey(rig);
+        await rig.speak(rig.conductor.onSubmission({ problemKey: key, language: "python", code: "x = 1", run: PASSING }));
+
+        const result = rig.conductor.onSubmission({ problemKey: key, language: "python", code: "x = 2", run: PASSING });
+        assert.equal(result, null, "a resubmission during follow-up is not reviewed as a new turn");
+
+        const system = rig.conductor.history.filter((u) => u.role === "system").map((u) => u.text);
+        assert.ok(
+            system.some((t) => /updated python solution/.test(t)),
+            "it must still be recorded, or the model has no way to know it happened when the candidate mentions it",
+        );
     });
 });
 

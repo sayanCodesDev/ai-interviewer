@@ -400,6 +400,14 @@ export class LiveInterview {
         this.send({ type: "SUBMISSION_RESULT", problemKey, attempt, run: redactHidden(run) });
         // Save while the interviewer reviews; the turn isn't over until both are done.
         const saved = this.recorder.addSubmission({ problemKey, kind: "SUBMIT", attempt, language, code, run });
+        // Grading takes real time (the sandbox has to run). If the round moved on while it was running, the
+        // candidate's own screen still shows the result (SUBMISSION_RESULT above), but the interviewer has nothing
+        // current to react to. Say so explicitly instead of just going quiet, which is what read as "it never arrived".
+        if (this.conductor.currentProblemKey !== problemKey) {
+            this.sendNotice("info", "That was graded, but we'd already moved on from this question — nothing is lost, it's saved with your other submissions.");
+            await saved;
+            return;
+        }
         await this.perform(this.conductor.onSubmission({ problemKey, language, code, run }));
         await saved;
     }
