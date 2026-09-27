@@ -6,7 +6,7 @@ import { logger } from "../../observability/logger";
 import { voiceSample } from "../../voice/tts";
 import { LANGUAGES } from "../../runner/types";
 import { publicPlanSummary } from "../../interview/planBuilder";
-import { ACCENTS, VOICES, createInterview, createInterviewSchema, deleteInterview, ensurePlanning, getOwnedInterview, listInterviews, readPlan } from "../../interview/service";
+import { ACCENTS, VOICES, continueInterview, createInterview, createInterviewSchema, deleteInterview, ensurePlanning, getOwnedInterview, listInterviews, readPlan } from "../../interview/service";
 import { FORMAT_PRESETS } from "../../interview/plan";
 import { getProblemDef, runCustom, runExamples, validateArgs } from "../../interview/problems";
 import { InterviewRecorder } from "../../interview/recorder";
@@ -49,6 +49,10 @@ const listSchema = z.object({
 
 const idSchema = z.uuid("That isn't a valid interview id.");
 
+const continueSchema = z.object({
+    topics: z.union([z.literal("all"), z.array(z.string().max(90)).min(1, "Choose at least one topic.").max(5)]).default("all"),
+});
+
 export function interviewsRouter(limits: RateLimits): Router {
     const router = Router();
 
@@ -78,6 +82,14 @@ export function interviewsRouter(limits: RateLimits): Router {
         }
 
         const { id } = await createInterview(user.id, input, resumeText);
+        res.status(201).json({ id });
+    });
+
+    /** "Practice this": a retry seeded from a finished report's study plan, in the same track as its source. */
+    router.post("/interviews/:id/continue", requireAuth, limits.createInterview, async (req, res) => {
+        const sourceId = parseInput(idSchema, req.params.id);
+        const { topics } = parseInput(continueSchema, req.body ?? {});
+        const { id } = await continueInterview(currentUser(req).id, sourceId, topics);
         res.status(201).json({ id });
     });
 

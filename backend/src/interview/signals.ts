@@ -75,6 +75,8 @@ export interface SignalInput {
     modelTags?: string[];
     /** Topics that matter for the role whatever the candidate's material says. */
     roleTags?: string[];
+    /** Topics the candidate explicitly asked to be tested on again (a "Practice this" retry). Outweighs everything else. */
+    extraTagWeights?: Record<string, number>;
 }
 
 function bump(tags: Record<string, number>, add: Record<string, number>, factor = 1): void {
@@ -91,6 +93,9 @@ export function extractSignals(input: SignalInput): Signals {
 
     // The model's reading of the job description is the strongest evidence, in the order it ranked the topics.
     (input.modelTags ?? []).forEach((tag, i) => bump(tags, { [tag]: Math.max(1.5, 4 - i * 0.5) }));
+
+    // A deliberate practice request beats anything read from a document: the candidate said exactly what they want.
+    bump(tags, input.extraTagWeights ?? {});
 
     const sources: Array<[string, number]> = [
         [input.jobDescription ?? "", 1],

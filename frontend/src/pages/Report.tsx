@@ -1,4 +1,4 @@
-import { ArrowRight, ChevronDown, Copy, Download, ExternalLink, Printer, Trash2 } from "lucide-react";
+import { ArrowRight, ChevronDown, Copy, Download, ExternalLink, Printer, Repeat, Trash2 } from "lucide-react";
 import { m } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -15,7 +15,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { AppLayout } from "@/layouts/AppLayout";
 import { apiErrorMessage } from "@/lib/api";
-import { deleteInterview, fetchReport, retryReport } from "@/lib/interviews";
+import { continueInterview, deleteInterview, fetchReport, retryReport } from "@/lib/interviews";
 import { EASE_OUT_EXPO } from "@/lib/motion";
 import type { Evidence, ProblemReport, ReportResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -135,6 +135,8 @@ export function Report() {
     const [highlight, setHighlight] = useState<number | null>(null);
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [retrying, setRetrying] = useState(false);
+    // "all", a topic string, or null: tracks which single "Practice this" button is in flight, so only that one shows a spinner.
+    const [practicing, setPracticing] = useState<string | null>(null);
 
     const load = useCallback(async () => {
         try {
@@ -185,6 +187,17 @@ export function Report() {
             toast.error(apiErrorMessage(err, "We couldn't restart the report."));
         } finally {
             setRetrying(false);
+        }
+    }
+
+    async function handlePractice(topics: "all" | string) {
+        setPracticing(topics);
+        try {
+            const { id: newId } = await continueInterview(id, topics === "all" ? "all" : [topics]);
+            navigate(`/lobby/${newId}`);
+        } catch (err) {
+            toast.error(apiErrorMessage(err, "We couldn't start that practice interview."));
+            setPracticing(null);
         }
     }
 
@@ -395,8 +408,13 @@ export function Report() {
                         </section>
 
                         {/* -------------------------------------------------------------- study plan */}
-                        <section className="border-t py-16">
-                            <SectionHeading label="Your preparation plan" title="What to practise, in order" />
+                        <section className="border-t py-16 print:hidden">
+                            <SectionHeading label="Your preparation plan" title="What to practise, in order">
+                                <Button variant="outline" size="sm" onClick={() => void handlePractice("all")} disabled={practicing !== null}>
+                                    {practicing === "all" ? <Spinner className="size-4" /> : <Repeat className="size-4" />}
+                                    Practice everything
+                                </Button>
+                            </SectionHeading>
                             <ol className="grid gap-5">
                                 {report.studyPlan.map((s, i) => (
                                     <li key={s.topic} className="grid gap-4 rounded-xl border bg-card p-6 sm:grid-cols-[3rem_1fr] print:break-inside-avoid">
@@ -405,6 +423,10 @@ export function Report() {
                                             <div className="flex flex-wrap items-center gap-3">
                                                 <h3 className="text-lg font-medium">{s.topic}</h3>
                                                 <span className={cn("label-mono rounded-full border px-2 py-0.5", s.priority === "high" && "border-transparent bg-foreground text-background")}>{s.priority} priority</span>
+                                                <Button variant="ghost" size="sm" className="ml-auto h-7 gap-1.5 px-2 text-xs" onClick={() => void handlePractice(s.topic)} disabled={practicing !== null}>
+                                                    {practicing === s.topic ? <Spinner className="size-3.5" /> : <Repeat className="size-3.5" />}
+                                                    Practice this
+                                                </Button>
                                             </div>
                                             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{s.why}</p>
                                             <Quotes items={s.evidence ?? []} onJump={jumpTo} />

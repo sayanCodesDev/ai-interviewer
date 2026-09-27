@@ -2,7 +2,7 @@ import { z } from "zod";
 import { completeJson } from "../llm/json";
 import { RateLimitedError, models } from "../llm/client";
 import type { InterviewPlan } from "../interview/plan";
-import { ALL_PROBLEMS, getProblemDef } from "../interview/problems";
+import { ALL_PROBLEMS, KNOWN_TAGS, getProblemDef } from "../interview/problems";
 import { UNTRUSTED_NOTICE, neutraliseDelimiters, sanitizeUntrusted, untrustedBlock } from "../interview/untrusted";
 import { logger } from "../observability/logger";
 import { computeMetrics, type InterviewMetrics, type ProblemFacts, type SubmissionRow, type TurnRow } from "./metrics";
@@ -76,7 +76,12 @@ export interface ReportData {
     problems: ProblemReport[];
     strengths: Array<{ title: string; detail: string; evidence: Evidence[] }>;
     improvements: Array<{ title: string; detail: string; priority: 1 | 2 | 3; evidence: Evidence[] }>;
-    studyPlan: Array<{ topic: string; why: string; actions: string[]; priority: "high" | "medium" | "low"; resources: Array<{ title: string; url: string }>; evidence: Evidence[] }>;
+    studyPlan: Array<{
+        topic: string; why: string; actions: string[]; priority: "high" | "medium" | "low";
+        resources: Array<{ title: string; url: string }>; evidence: Evidence[];
+        /** Coding-bank topics this item is about, if any: what a "Practice this" retry weights problem selection toward. */
+        problemTags: string[];
+    }>;
     metrics: Omit<InterviewMetrics, "problems"> & { segmentsAnalysed: number; segmentsTotal: number };
     disclaimer: string;
     generatedBy: { model: string; promptVersion: string };
@@ -124,6 +129,8 @@ const synthesisSchema = z.object({
         topic: text(90), why: text(350), actions: list(4, 240),
         priority: z.enum(["high", "medium", "low"]).catch("medium"),
         resourceTags: list(4, 40).catch([]),
+        // Only when the topic is a coding/DSA gap; left empty for things like communication or system design.
+        problemTags: list(6, 40).catch([]),
         sources: list(4, 20).catch([]),
     })).transform((s) => s.filter((x) => x.topic).slice(0, 5)),
 });
@@ -345,7 +352,8 @@ Study plan — this is the part the candidate will actually act on, so make ever
 - Each topic needs at least one action the candidate could start today, concrete enough to act on without more research (weak: "practice more dynamic programming"; strong: "solve 5 knapsack-variant problems on NeetCode, then explain the recurrence out loud before coding each one"). Reference the actual technology, problem type or mistake from the interview by name where it fits.
 - Order by how much it would have raised the outcome of this specific interview, not by general importance to the role.
 - For resourceTags choose only tags that fit the topic, only from: ${RESOURCE_TAGS.join(", ")}. An empty list is better than a poor fit.
-Reply with ONE JSON object: {"summary": "3-5 sentences on how the interview went", "dimensionSummaries": {${dims.filter((d) => !d.objective).map((d) => `"${d.key}": "1-2 sentences"`).join(", ")}}, "strengths": [{"title": "", "detail": "", "sources": ["s-open.s1"]}], "improvements": [{"title": "", "detail": "", "priority": 1, "sources": ["p1.g1"]}], "studyPlan": [{"topic": "", "why": "", "actions": [""], "priority": "high", "resourceTags": ["algorithms"], "sources": ["p1.g1"]}]}. At most 5 strengths and 6 improvements.`;
+- For problemTags: ONLY when the topic is a coding/DSA gap (not system design, communication, or behavioral), list which of these coding-bank topics it is about, so a follow-up interview can practise the same kind of problem: ${KNOWN_TAGS.join(", ")}. Leave it empty for anything that isn't about coding problems.
+Reply with ONE JSON object: {"summary": "3-5 sentences on how the interview went", "dimensionSummaries": {${dims.filter((d) => !d.objective).map((d) => `"${d.key}": "1-2 sentences"`).join(", ")}}, "strengths": [{"title": "", "detail": "", "sources": ["s-open.s1"]}], "improvements": [{"title": "", "detail": "", "priority": 1, "sources": ["p1.g1"]}], "studyPlan": [{"topic": "", "why": "", "actions": [""], "priority": "high", "resourceTags": ["algorithms"], "problemTags": ["dynamic-programming"], "sources": ["p1.g1"]}]}. At most 5 strengths and 6 improvements.`;
 
     const parts = results.map((r) => {
         const items = [...r.items].map(([id, i]) => `  ${id} ${i.kind === "strength" ? "STRENGTH" : `GAP p${i.priority}`}: ${i.title}. ${i.detail}`).join("\n");
@@ -484,7 +492,11 @@ export function assemble(
         problems: problemReports,
         strengths: synthesis.strengths.map((s) => ({ title: s.title, detail: s.detail, evidence: gather(s.sources) })),
         improvements: synthesis.improvements.map((s) => ({ title: s.title, detail: s.detail, priority: s.priority as 1 | 2 | 3, evidence: gather(s.sources) })).sort((a, b) => a.priority - b.priority),
-        studyPlan: synthesis.studyPlan.map((s) => ({ topic: s.topic, why: s.why, actions: s.actions, priority: s.priority, resources: resourcesFor(s.resourceTags), evidence: gather(s.sources) })),
+        studyPlan: synthesis.studyPlan.map((s) => ({
+            topic: s.topic, why: s.why, actions: s.actions, priority: s.priority,
+            resources: resourcesFor(s.resourceTags), evidence: gather(s.sources),
+            problemTags: [...new Set(s.problemTags.map((t) => t.toLowerCase()))].filter((t) => (KNOWN_TAGS as readonly string[]).includes(t)),
+        })),
         metrics: {
             durationMinutes: metrics.durationMinutes, candidateTurns: metrics.candidateTurns, candidateWords: metrics.candidateWords,
             averageWordsPerTurn: metrics.averageWordsPerTurn, fillersPer100Words: metrics.fillersPer100Words, hintsUsed: metrics.hintsUsed,

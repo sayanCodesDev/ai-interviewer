@@ -99,9 +99,90 @@ export async function createInterview(userId: string, input: CreateInterviewInpu
     return created;
 }
 
+// ------------------------------------------------------------------------------------- continuing
+
+/** Which study-plan topics from a finished report to weight the next interview toward. */
+export type ContinueTopics = "all" | string[];
+
+/**
+ * A "Practice this" retry: same role, level, job description and GitHub as the source interview, but the
+ * coding problems and question order lean toward the study-plan topics the candidate chose to revisit. Grouped
+ * with the source under one trackId so the dashboard and the interviewer's own memory can follow the sequence.
+ */
+export async function continueInterview(userId: string, sourceId: string, topicsInput: ContinueTopics): Promise<{ id: string }> {
+    const source = await getOwnedInterview(userId, sourceId);
+    const report = await prisma.report.findUnique({ where: { interviewId: sourceId } });
+    if (!report) throw new HttpError(400, "That interview doesn't have a report yet.", "no_report");
+    const studyPlan = ((report.data as { studyPlan?: Array<{ topic: string }> } | null)?.studyPlan ?? []) as Array<{ topic: string }>;
+    if (studyPlan.length === 0) throw new HttpError(400, "That report has no study plan to practise.", "no_study_plan");
+
+    const topics = topicsInput === "all" ? studyPlan.map((s) => s.topic) : topicsInput.filter((t) => studyPlan.some((s) => s.topic === t));
+    if (topics.length === 0) throw new HttpError(400, "Choose at least one study-plan topic to practise.", "no_topics");
+
+    if (config.maxInterviewsPerDay > 0) {
+        const recent = await prisma.interview.count({ where: { userId, createdAt: { gte: new Date(Date.now() - DAY_MS) } } });
+        if (recent >= config.maxInterviewsPerDay) {
+            throw new HttpError(429, `You've reached today's limit of ${config.maxInterviewsPerDay} interviews. Try again tomorrow.`, "daily_limit");
+        }
+    }
+
+    // Position within the track: highest so far, plus one — so retrying from an earlier attempt in a track
+    // (not just the latest) still moves the track forward instead of colliding with a later position.
+    const highest = await prisma.interview.aggregate({ where: { trackId: source.trackId }, _max: { trackPosition: true } });
+    const trackPosition = Math.max(highest._max.trackPosition ?? 0, source.trackPosition) + 1;
+
+    const preset = FORMAT_PRESETS[source.format as Format];
+    const created = await prisma.interview.create({
+        data: {
+            userId,
+            targetRole: source.targetRole,
+            level: source.level,
+            format: source.format,
+            durationMinutes: preset.minutes,
+            jobDescription: source.jobDescription,
+            responsibilities: source.responsibilities,
+            resumeText: source.resumeText,
+            githubUsername: source.githubUsername,
+            voice: source.voice,
+            accent: source.accent,
+            trackId: source.trackId,
+            trackPosition,
+            continuesFromId: source.id,
+            continuesTopics: topics,
+        },
+        select: { id: true },
+    });
+
+    void preparePlan(created.id);
+    return created;
+}
+
 // ------------------------------------------------------------------------------------------- planning
 
 const planning = new Set<string>();
+
+/**
+ * Re-derives coding-topic weights and an interviewer memory line from a source interview's study plan, for the
+ * topics this retry chose. Nothing is stored on the row itself beyond the topic names: the source report already
+ * holds the detail, so re-reading it here is the one place this can drift out of sync.
+ */
+async function practiceContext(sourceInterviewId: string, topics: string[]): Promise<{ tagWeights?: Record<string, number>; memoryNote?: string }> {
+    if (topics.length === 0) return {};
+    const report = await prisma.report.findUnique({ where: { interviewId: sourceInterviewId } });
+    const studyPlan = (report?.data as { studyPlan?: Array<{ topic: string; why: string; priority: string; problemTags?: string[] }> } | null)?.studyPlan ?? [];
+    const chosen = studyPlan.filter((item) => topics.includes(item.topic));
+    if (chosen.length === 0) return {};
+
+    const weights: Record<string, number> = {};
+    for (const item of chosen) {
+        const base = item.priority === "high" ? 6 : item.priority === "low" ? 3.5 : 4.5;
+        for (const tag of item.problemTags ?? []) weights[tag] = (weights[tag] ?? 0) + base;
+    }
+
+    const memoryNote = `This candidate interviewed with you before and came back specifically to practise: ${chosen.map((c) => c.topic).join("; ")}. ${chosen[0]!.why} Acknowledge once, naturally, near the start that this continues their last interview; do not reintroduce yourself as a stranger, and do not read this note aloud.`;
+
+    return { tagWeights: Object.keys(weights).length > 0 ? weights : undefined, memoryNote };
+}
 
 /**
  * Turns the setup answers into a concrete interview: reads GitHub, analyses the job description and
@@ -120,14 +201,20 @@ export async function preparePlan(interviewId: string): Promise<void> {
         // description text so every consumer (signals, keyterms, the model's own reading of the role) sees it
         // without needing to know there are two fields.
         const jobDescription = [row.jobDescription, row.responsibilities ? `Key responsibilities:\n${row.responsibilities}` : ""].filter(Boolean).join("\n\n") || undefined;
-        const analysis = await analyseCandidate({
+        const practice = row.continuesFromId ? await practiceContext(row.continuesFromId, row.continuesTopics) : {};
+        const cached = await analyseCandidate({
             role: row.targetRole,
             level: row.level as Level,
             jobDescription,
             resumeText: row.resumeText ?? undefined,
             github,
             seed: interviewId,
+            extraTagWeights: practice.tagWeights,
         });
+        // analyseCandidate's result can be a cached, shared object (retries deliberately reuse their source's
+        // role/level/JD/resume/github, which is exactly the cache key) — copy rather than mutate before adding
+        // a note that is specific to this one interview.
+        const analysis = practice.memoryNote ? { ...cached, brief: [cached.brief, practice.memoryNote].filter(Boolean).join("\n\n") } : cached;
         const plan = buildPlan({ role: row.targetRole, level: row.level as Level, format: row.format as Format, analysis, seed: interviewId });
 
         warmExpected(plan.rounds.flatMap((r) => r.items).flatMap((i) => (i.kind === "coding" ? [i.problemKey] : [])));

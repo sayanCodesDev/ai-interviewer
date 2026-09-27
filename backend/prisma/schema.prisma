@@ -98,6 +98,17 @@ model Interview {
   voice           String          @default("aura-2-thalia-en")
   accent          String          @default("en")
 
+  /// Groups interviews that continue one another via "Practice this". A standalone interview gets its own
+  /// freshly generated value, so every interview belongs to a track of at least one; only a "Practice this"
+  /// retry is ever created with an explicit trackId inherited from what it continues.
+  trackId         String          @default(uuid())
+  /// 1 for a standalone or first interview in a track, 2+ for each retry after it.
+  trackPosition   Int             @default(1)
+  /// The specific interview this one was seeded from, if it was a "Practice this" retry.
+  continuesFromId String?
+  /// The study-plan topics this retry targeted, kept for display without re-reading the old report.
+  continuesTopics String[]        @default([])
+
   planStatus      PlanStatus      @default(PENDING)
   /// Rounds, questions and selected problems. Hidden tests never live here.
   plan            Json?
@@ -121,6 +132,7 @@ model Interview {
   @@index([userId, createdAt(sort: Desc)])
   @@index([reportStatus, updatedAt])
   @@index([status, updatedAt])
+  @@index([trackId, trackPosition])
 }
 
 model InterviewTurn {

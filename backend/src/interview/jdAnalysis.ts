@@ -20,6 +20,9 @@ export interface AnalysisInput {
      * not open with the identical set every time. Falls back to the role and level, which is still better
      * than a fixed order but repeats for the same candidate asking again with the same everything. */
     seed?: string;
+    /** Set on a "Practice this" retry: the coding-bank topics from the study plan items the candidate chose to
+     * revisit, weighted so problem selection leans toward them without excluding everything else. */
+    extraTagWeights?: Record<string, number>;
 }
 
 export interface BehavioralQuestion {
@@ -190,7 +193,7 @@ export function fallbackAnalysis(input: AnalysisInput): Analysis {
             codingTags: bank.codingTags,
             behavioralFocus: [],
         },
-        signals: extractSignals({ role: input.role, jobDescription: input.jobDescription, resumeText: input.resumeText, github: input.github, roleTags: bank.codingTags }),
+        signals: extractSignals({ role: input.role, jobDescription: input.jobDescription, resumeText: input.resumeText, github: input.github, roleTags: bank.codingTags, extraTagWeights: input.extraTagWeights }),
         technical: questionsForLevel(input.role, input.level, corpusTokens(input), input.seed),
         background: [...githubBackground(input.github), ...GENERIC_BACKGROUND],
         behavioral: behavioralForLevel(input.level, input.seed),
@@ -206,7 +209,10 @@ const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 function cacheKey(input: AnalysisInput): string {
     return crypto
         .createHash("sha256")
-        .update(JSON.stringify([input.role, input.level, input.jobDescription ?? "", input.resumeText ?? "", summariseGithub(input.github ?? null)]))
+        // extraTagWeights is included: a "Practice this" retry shares its role/level/JD/resume/github with its
+        // source interview by design, so without this the very first (unweighted) analysis would be served back
+        // to every retry from cache, and the weighting would silently do nothing.
+        .update(JSON.stringify([input.role, input.level, input.jobDescription ?? "", input.resumeText ?? "", summariseGithub(input.github ?? null), input.extraTagWeights ?? null]))
         .digest("hex");
 }
 
@@ -239,7 +245,7 @@ function fromReply(reply: z.infer<typeof replySchema>, input: AnalysisInput): An
 
     return {
         source: "llm",
-        signals: extractSignals({ role: input.role, jobDescription: input.jobDescription, resumeText: input.resumeText, github: input.github, modelTags: codingTags, roleTags: getRoleBank(input.role).codingTags }),
+        signals: extractSignals({ role: input.role, jobDescription: input.jobDescription, resumeText: input.resumeText, github: input.github, modelTags: codingTags, roleTags: getRoleBank(input.role).codingTags, extraTagWeights: input.extraTagWeights }),
         brief: reply.brief || fallback.brief,
         jd: {
             title: reply.title,

@@ -29,6 +29,11 @@ export async function retryReport(id: string): Promise<void> {
     await api.post(`/api/interviews/${id}/report/retry`);
 }
 
+/** "Practice this": starts a retry seeded from a finished report, weighted toward the chosen study-plan topics. */
+export async function continueInterview(id: string, topics: "all" | string[]): Promise<{ id: string }> {
+    return (await api.post<{ id: string }>(`/api/interviews/${id}/continue`, { topics })).data;
+}
+
 export async function endInterviewOverHttp(id: string): Promise<void> {
     await api.post(`/api/interviews/${id}/end`);
 }
