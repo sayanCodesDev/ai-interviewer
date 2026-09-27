@@ -317,6 +317,21 @@ describe("LiveInterview: the interview follows what has been heard", () => {
         assert.ok(fresh.spoken.length > before, "an answer to a question, however short, gets a reply");
     });
 
+    test("a quick 'yes, let's continue' during the pause confirms the move instead of cancelling it or going quiet", async () => {
+        const { voice, live } = await afterFirstAnswer();
+        voice.handlers.onCandidateTurn(ANSWER);
+        await until(() => voice.spoken.filter((s) => s === "Okay.").length === 2);
+        await sleep(30); // well inside the pause; this used to read as new speech and cancel the move
+        voice.handlers.onCandidateSpeaking("Yes, let's continue", false);
+        voice.handlers.onCandidateTurn("Yes, let's continue");
+        await until(() => rounds(voice).includes("background"));
+        assert.ok(voice.spoken.some((s) => /next question/.test(s)), "the interviewer went on to ask the next question on its own");
+        // If the confirmation had cancelled the move, it would have been reprocessed as a new answer to the
+        // question already left behind: one more acknowledgement, and one more announced move, before it
+        // eventually got there. Confirming instead of cancelling reaches the next question in a single move.
+        assert.equal(voice.spoken.filter((s) => s === "Okay.").length, 2, "the confirmation was not treated as a fresh answer to the old question");
+    });
+
     test("cutting in while the last words are playing records what was heard, and what they said comes before any move", async () => {
         const { voice, live } = await afterFirstAnswer();
         voice.hold = true;
