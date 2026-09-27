@@ -205,4 +205,44 @@ describe("HttpLlm", () => {
         assert.ok("reasoning_effort" in seen[0]!.body);
         assert.ok(!("reasoning_effort" in seen[1]!.body));
     });
+
+    describe("a second, independent provider as a last resort", () => {
+        let secondaryServer: http.Server;
+        let secondarySeen: Seen[] = [];
+
+        before(async () => {
+            secondaryServer = http.createServer((req, res) => {
+                let raw = "";
+                req.on("data", (c) => (raw += c));
+                req.on("end", () => {
+                    const body = JSON.parse(raw || "{}");
+                    secondarySeen.push({ model: body.model, body, auth: req.headers.authorization });
+                    res.writeHead(200, { "content-type": "text/event-stream" });
+                    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "from the second provider" } }] })}\n\n`);
+                    res.end("data: [DONE]\n\n");
+                });
+            });
+            await new Promise<void>((resolve) => secondaryServer.listen(0, "127.0.0.1", resolve));
+            config.secondaryLlm = { baseUrl: `http://127.0.0.1:${(secondaryServer.address() as AddressInfo).port}/v1`, apiKey: "secondary-key", model: "backup-model" };
+        });
+        after(() => { secondaryServer.close(); secondaryServer.closeAllConnections?.(); config.secondaryLlm = undefined; });
+        beforeEach(() => { secondarySeen = []; });
+
+        test("is only tried once every model on the first provider is exhausted", async () => {
+            behaviour = () => ({ status: 429, headers: { "retry-after": "900" }, body: '{"error":"tpd"}' });
+            const text = await collect(new HttpLlm().stream(ask, { model: "primary-a", fallbackModels: ["primary-b"] }));
+            assert.equal(text, "from the second provider");
+            assert.deepEqual(seen.map((s) => s.model), ["primary-a", "primary-b"], "both primary models were tried first");
+            assert.equal(secondarySeen.length, 1);
+            assert.equal(secondarySeen[0]!.model, "backup-model", "its own model name is sent, not the primary's");
+            assert.equal(secondarySeen[0]!.auth, "Bearer secondary-key", "its own key is sent, not the primary's");
+        });
+
+        test("is not touched at all while the first provider still has room", async () => {
+            behaviour = () => ({ status: 200, sse: ["from the first provider"] });
+            const text = await collect(new HttpLlm().stream(ask, { model: "primary-c", fallbackModels: [] }));
+            assert.equal(text, "from the first provider");
+            assert.equal(secondarySeen.length, 0);
+        });
+    });
 });

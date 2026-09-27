@@ -45,6 +45,16 @@ const schema = z.object({
     LLM_API_KEY: optionalString,
     /** Tokens per minute each model may use, when the provider doesn't report it. Free Groq keys allow 8000. */
     LLM_TPM_LIMIT: optionalInt(8000),
+    /**
+     * A second, independent provider tried only once every model on the first has been rate-limited or is
+     * cooling down. Fallback models above still share one account's daily allowance; this is a different
+     * account (or a different free provider entirely — Cerebras, OpenRouter's free models, Google AI
+     * Studio's OpenAI-compatible endpoint all work), so it keeps the interview going after the whole first
+     * account is exhausted for the day, not just one model on it. All three must be set together, or none.
+     */
+    SECONDARY_LLM_BASE_URL: optionalString,
+    SECONDARY_LLM_API_KEY: optionalString,
+    SECONDARY_LLM_MODEL: optionalString,
     /** Optional. Raises GitHub's anonymous 60-requests-an-hour limit when reading candidates' public repositories. */
     GITHUB_TOKEN: optionalString,
 
@@ -108,6 +118,8 @@ export interface AppConfig {
     llmBaseUrl: string;
     llmApiKey?: string;
     llmTpmLimit: number;
+    /** A second, independent provider tried only after the first is entirely exhausted. See SECONDARY_LLM_BASE_URL. */
+    secondaryLlm?: { baseUrl: string; apiKey: string; model: string };
     githubToken?: string;
 
     codeRunner: "auto" | "docker" | "local";
@@ -178,6 +190,11 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env, warn: (messa
         problems.push("JWT_SECRET must be at least 32 characters in production");
     }
 
+    const secondarySet = [raw.SECONDARY_LLM_BASE_URL, raw.SECONDARY_LLM_API_KEY, raw.SECONDARY_LLM_MODEL].filter(Boolean).length;
+    if (secondarySet > 0 && secondarySet < 3) {
+        warn("[config] SECONDARY_LLM_BASE_URL, SECONDARY_LLM_API_KEY and SECONDARY_LLM_MODEL must all be set together; the fallback provider is disabled until they are.");
+    }
+
     const allowedOrigins = raw.ALLOWED_ORIGINS
         ? raw.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean)
         : DEV_ORIGINS;
@@ -230,6 +247,9 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env, warn: (messa
         llmBaseUrl: (raw.LLM_BASE_URL ?? "https://api.groq.com/openai/v1").replace(/\/+$/, ""),
         llmApiKey: raw.LLM_API_KEY ?? raw.GROQ_API_KEY,
         llmTpmLimit: Math.max(1_000, raw.LLM_TPM_LIMIT),
+        secondaryLlm: raw.SECONDARY_LLM_BASE_URL && raw.SECONDARY_LLM_API_KEY && raw.SECONDARY_LLM_MODEL
+            ? { baseUrl: raw.SECONDARY_LLM_BASE_URL.replace(/\/+$/, ""), apiKey: raw.SECONDARY_LLM_API_KEY, model: raw.SECONDARY_LLM_MODEL }
+            : undefined,
         githubToken: raw.GITHUB_TOKEN,
 
         codeRunner: raw.CODE_RUNNER,
