@@ -69,9 +69,6 @@ const result = await Bun.build({
   minify: true,
   target: "browser",
   sourcemap: "linked",
-  // @excalidraw/excalidraw's package.json exports its stylesheet only behind "development"/"production"
-  // conditions, which Bun does not assume by default.
-  conditions: ["production"],
   // The lazy routes (landing, interview) become their own chunks, and absolute URLs
   // let every chunk and font resolve no matter which route the page was loaded from.
   splitting: true,
@@ -87,6 +84,27 @@ const result = await Bun.build({
     ...settingGlobals,
   },
 });
+
+// Bun's own build output correctly labels one JS artifact as the app's entry point (`kind: "entry-point"`),
+// but — reproduced with a minimal build, so this is Bun's bug, not a one-off — the <script type="module">
+// tag it writes into the HTML can reference a different, unrelated chunk instead when the module graph is
+// large enough (as it now is, with Excalidraw pulled in for the design-round whiteboard). That leaves the
+// app bootstrapping nothing: an empty #root, no console error, because the wrong chunk loads and executes
+// fine, it just never calls createRoot. Force the HTML to reference the artifact Bun's own metadata says is
+// actually the entry, rather than trusting what it wrote into the tag.
+{
+  const entryArtifact = result.outputs.find((o) => o.kind === "entry-point" && o.path.endsWith(".js"));
+  if (!entryArtifact) throw new Error("build: Bun reported no JS entry-point artifact — cannot verify the app's bootstrap script.");
+  const entryHref = `/${path.basename(entryArtifact.path)}`;
+  const indexPath = path.join(outdir, "index.html");
+  const html = await Bun.file(indexPath).text();
+  const scriptTag = /<script type="module"[^>]*\ssrc="([^"]+)"[^>]*><\/script>/.exec(html);
+  if (!scriptTag) throw new Error("build: could not find the app's <script type=\"module\"> tag in dist/index.html to verify.");
+  if (scriptTag[1] !== entryHref) {
+    console.warn(`⚠️  Bun referenced the wrong entry chunk in dist/index.html (${scriptTag[1]}, not the real entry ${entryHref}) — correcting it.`);
+    await Bun.write(indexPath, html.replace(scriptTag[0], scriptTag[0].replace(scriptTag[1]!, entryHref)));
+  }
+}
 
 // Copy public/ folder to dist/ (includes _redirects for Netlify, etc.)
 const publicDir = path.join(process.cwd(), "public");
@@ -112,6 +130,15 @@ try {
 
 // A stable URL for the logo (the bundled copy has a hashed name).
 await cp(path.join(process.cwd(), "src", "favicon.svg"), path.join(outdir, "favicon.svg"));
+
+// The design-round whiteboard's stylesheet, served as a static file for the same reason Monaco is above:
+// its package export is gated behind non-standard conditions that, if satisfied via Bun.build's own
+// `conditions` option, changed which chunk Bun treated as the app's entry script. See DesignCanvas.tsx.
+try {
+  await cp(path.join(process.cwd(), "node_modules", "@excalidraw", "excalidraw", "dist", "prod", "index.css"), path.join(outdir, "excalidraw", "index.css"));
+} catch {
+  console.warn("⚠️  Could not copy the Excalidraw stylesheet. Run `bun install` so the design-round whiteboard is styled.");
+}
 
 // `import.meta.env` doesn't exist in a browser. If any of it survived into the bundle, that code reads
 // `undefined` (or throws) there, and a setting like the API address silently falls back to its default.

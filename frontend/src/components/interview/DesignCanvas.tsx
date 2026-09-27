@@ -1,13 +1,25 @@
 import { Excalidraw } from "@excalidraw/excalidraw";
-// This package's "./index.css" export is gated on "development"/"production" package.json export conditions,
-// which Bun's bundler and dev server need to be told about explicitly (see build.ts and bunfig.toml).
-import "@excalidraw/excalidraw/index.css";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
-import { forwardRef, useImperativeHandle, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
 import { loadDraft, saveDraft } from "@/hooks/useEditorPrefs";
 import { describeExcalidrawScene } from "./sceneDescription";
+
+// Not a normal `import "...css"`: this package's stylesheet export is gated behind non-standard package.json
+// export conditions that made Bun's production bundler pick the wrong chunk as the app's own entry script
+// (see build.ts's history for the exact failure). Served as a plain static file instead, the same way
+// monaco-setup.ts serves Monaco's assets, so this component's CSS need never go through module resolution.
+const EXCALIDRAW_CSS_HREF = "/excalidraw/index.css";
+function useExcalidrawStylesheet(): void {
+    useEffect(() => {
+        if (document.querySelector(`link[href="${EXCALIDRAW_CSS_HREF}"]`)) return;
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = EXCALIDRAW_CSS_HREF;
+        document.head.appendChild(link);
+    }, []);
+}
 
 export interface DesignCanvasHandle {
     /** A structured, readable description of the current diagram, for the interviewer to read instead of a screenshot. */
@@ -22,6 +34,7 @@ interface DesignCanvasProps {
 export const DesignCanvas = forwardRef<DesignCanvasHandle, DesignCanvasProps>(function DesignCanvas({ draftKey }, ref) {
     const api = useRef<ExcalidrawImperativeAPI | null>(null);
     const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    useExcalidrawStylesheet();
 
     useImperativeHandle(ref, () => ({
         describeScene: () => describeExcalidrawScene(api.current?.getSceneElements() ?? []),
