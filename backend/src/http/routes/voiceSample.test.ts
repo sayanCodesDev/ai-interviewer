@@ -82,3 +82,47 @@ describe("GET /api/interviews/:id/voice-sample", () => {
         assert.equal((await new TestClient(server.url).get(`/api/interviews/${id}/voice-sample`)).status, 401);
     });
 });
+
+describe("GET /api/voices/:voiceId/sample", () => {
+    test("plays a sample of any offered voice, with no interview needed, and caches per voice", async () => {
+        config.voiceMode = "live";
+        config.deepgramApiKey = "test-key";
+        const calls: string[] = [];
+        setSampleSynthesizerForTesting(async (voice) => { calls.push(voice); return Buffer.from("ID3-fake-mp3"); });
+        const { client } = await signedIn("a@example.com");
+
+        const first = await client.get("/api/voices/aura-2-luna-en/sample");
+        assert.equal(first.status, 200);
+        assert.equal(first.headers.get("content-type"), "audio/mpeg");
+        await client.get("/api/voices/aura-2-luna-en/sample");
+        assert.deepEqual(calls, ["aura-2-luna-en"], "synthesised once, then served from memory");
+
+        await client.get("/api/voices/aura-2-zeus-en/sample");
+        assert.deepEqual(calls, ["aura-2-luna-en", "aura-2-zeus-en"], "a different voice is synthesised separately");
+    });
+
+    test("rejects a voice that isn't offered", async () => {
+        config.voiceMode = "live";
+        config.deepgramApiKey = "test-key";
+        setSampleSynthesizerForTesting(async () => Buffer.from("x"));
+        const { client } = await signedIn("a@example.com");
+        const res = await client.get("/api/voices/not-a-real-voice/sample");
+        assert.equal(res.status, 400);
+    });
+
+    test("needs signing in, but not an interview", async () => {
+        config.voiceMode = "live";
+        config.deepgramApiKey = "test-key";
+        setSampleSynthesizerForTesting(async () => Buffer.from("x"));
+        assert.equal((await new TestClient(server.url).get("/api/voices/aura-2-luna-en/sample")).status, 401);
+    });
+
+    test("is unavailable in text mode or without a speech key, with a clear message", async () => {
+        const { client } = await signedIn("a@example.com");
+        config.voiceMode = "text";
+        config.deepgramApiKey = "test-key";
+        const res = await client.get("/api/voices/aura-2-luna-en/sample");
+        assert.equal(res.status, 503);
+        assert.equal(res.body.code, "voice_unavailable");
+    });
+});

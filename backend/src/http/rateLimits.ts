@@ -59,7 +59,8 @@ export function createRateLimits({ scale = 1 }: RateLimitSettings = {}) {
         reads: limiter(MINUTE, 120, scale, "Too many requests. Please slow down.", { key: byUser }),
         account: limiter(60 * MINUTE, 6, scale, "Too many attempts. Try again later.", { key: byUser }),
         webrtc: limiter(15 * MINUTE, 20, scale, "Too many call attempts. Try again shortly.", { key: byUser }),
-        voiceSample: limiter(15 * MINUTE, 10, scale, "You've played the sample a lot. Try again in a few minutes.", { key: byUser }),
+        // Shared by the lobby's sound check and setup's per-voice preview, where comparing a few voices is normal.
+        voiceSample: limiter(15 * MINUTE, 30, scale, "You've played the sample a lot. Try again in a few minutes.", { key: byUser }),
     };
 }
 
