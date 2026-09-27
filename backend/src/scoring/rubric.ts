@@ -86,6 +86,13 @@ export const RESOURCES: Record<string, Array<{ title: string; url: string }>> = 
     spark: [{ title: "Apache Spark documentation", url: "https://spark.apache.org/docs/latest/" }],
     kafka: [{ title: "Apache Kafka documentation", url: "https://kafka.apache.org/documentation/" }],
     mobile: [{ title: "React Native documentation", url: "https://reactnative.dev/docs/getting-started" }, { title: "Flutter documentation", url: "https://docs.flutter.dev/" }],
+    "machine-learning": [{ title: "Google's Machine Learning Crash Course", url: "https://developers.google.com/machine-learning/crash-course" }, { title: "A Course in Machine Learning (CIML)", url: "http://ciml.info/" }],
+    security: [{ title: "OWASP Top 10", url: "https://owasp.org/www-project-top-ten/" }, { title: "OWASP Cheat Sheet Series", url: "https://cheatsheetseries.owasp.org/" }],
+    testing: [{ title: "Google Testing Blog", url: "https://testing.googleblog.com/" }, { title: "Playwright documentation", url: "https://playwright.dev/docs/intro" }],
+    "data-science": [{ title: "Seeing Theory: a visual introduction to probability and statistics", url: "https://seeing-theory.brown.edu/" }, { title: "pandas documentation", url: "https://pandas.pydata.org/docs/" }],
+    "game-development": [{ title: "Game Programming Patterns", url: "https://gameprogrammingpatterns.com/" }, { title: "Gaffer On Games", url: "https://gafferongames.com/" }],
+    python: [{ title: "Python documentation", url: "https://docs.python.org/3/" }, { title: "Real Python", url: "https://realpython.com/" }],
+    sql: [{ title: "Use The Index, Luke", url: "https://use-the-index-luke.com/" }, { title: "SQLBolt", url: "https://sqlbolt.com/" }],
 };
 
 export const RESOURCE_TAGS = Object.keys(RESOURCES);

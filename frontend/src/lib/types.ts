@@ -139,7 +139,7 @@ export interface ReportData {
     problems: ProblemReport[];
     strengths: Array<{ title: string; detail: string; evidence: Evidence[] }>;
     improvements: Array<{ title: string; detail: string; priority: 1 | 2 | 3; evidence: Evidence[] }>;
-    studyPlan: Array<{ topic: string; why: string; actions: string[]; priority: "high" | "medium" | "low"; resources: Array<{ title: string; url: string }> }>;
+    studyPlan: Array<{ topic: string; why: string; actions: string[]; priority: "high" | "medium" | "low"; resources: Array<{ title: string; url: string }>; evidence?: Evidence[] }>;
     metrics: {
         durationMinutes: number; candidateTurns: number; candidateWords: number; averageWordsPerTurn: number; fillersPer100Words: number;
         hintsUsed: number; problemsAttempted: number; problemsSolved: number; testPassRate: number; segmentsAnalysed: number; segmentsTotal: number;

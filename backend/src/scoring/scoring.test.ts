@@ -91,7 +91,7 @@ function brain(over: Brain = {}) {
             dimensionSummaries: Object.fromEntries(ALL_KEYS.map((k) => [k, `Summary for ${k}.`])),
             strengths: [{ title: "Databases", detail: "Solid indexing instincts.", sources: strengthIds }],
             improvements: [{ title: "Edge cases", detail: "Mention empty input earlier.", priority: 2, sources: gapIds }, { title: "Pacing", detail: "Get to code sooner.", priority: 1, sources: [] }],
-            studyPlan: [{ topic: "Graph traversal", why: "It came up.", actions: ["Do five BFS problems"], priority: "high", resourceTags: ["algorithms", "not-a-tag"] }],
+            studyPlan: [{ topic: "Graph traversal", why: "It came up.", actions: ["Do five BFS problems"], priority: "high", resourceTags: ["algorithms", "not-a-tag"], sources: gapIds }],
         });
     };
 }
@@ -275,6 +275,23 @@ describe("evaluation pipeline", () => {
         assert.deepEqual(report.improvements.map((i) => i.priority), [1, 2]);
         assert.ok(report.studyPlan[0]!.resources.length > 0);
         assert.ok(report.studyPlan[0]!.resources.every((r) => r.url.startsWith("https://")));
+    });
+
+    test("a study plan topic is grounded in what actually happened: real gaps carry their quote, an invented source carries none", async () => {
+        const { report } = await evaluate({
+            segment: () => ({ score: 4, summary: "", signals: [], strengths: [], gaps: [
+                { title: "Traversal gap", detail: "d", priority: 1, evidence: [{ turn: 8, quote: "composite index that matches the filter" }] },
+            ] }),
+            synthesis: () => ({ summary: "s", dimensionSummaries: {}, strengths: [], improvements: [], studyPlan: [
+                { topic: "Made up topic", why: "w", actions: ["a"], priority: "high", resourceTags: [], sources: ["nope.g9"] },
+                { topic: "Graph traversal", why: "w", actions: ["a"], priority: "high", resourceTags: ["algorithms"], sources: ["s-open.g1", "p0.g1", "s1.g1"] },
+            ] }),
+        });
+        const invented = report.studyPlan.find((s) => s.topic === "Made up topic")!;
+        assert.deepEqual(invented.evidence, []);
+        const real = report.studyPlan.find((s) => s.topic === "Graph traversal")!;
+        assert.ok(real.evidence.length >= 1, "traced to the gap it came from");
+        assert.ok(real.evidence.every((e) => transcript().some((t) => t.role === "CANDIDATE" && t.text.toLowerCase().includes(e.quote.toLowerCase().slice(0, 20)))));
     });
 
     test("problems merge the objective facts with the model's commentary", async () => {
