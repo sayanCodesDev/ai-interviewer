@@ -792,6 +792,562 @@ export const ROLE_CONTENT: RoleContent[] = [
                 "prompt": "Design a globally distributed activity feed that must feel instant for users on every continent."
             }
         ]
+    },
+    {
+        "slug": "machine-learning-engineer",
+        "role": "Machine Learning Engineer",
+        "summary": "For candidates who build and ship models: features, training, evaluation and serving them reliably.",
+        "focusAreas": [
+            "Feature engineering and data leakage",
+            "Model evaluation and validation",
+            "Training at scale",
+            "Serving, latency and drift",
+            "Experiment design"
+        ],
+        "codingTopics": [
+            "array",
+            "matrix",
+            "hash-map",
+            "sorting",
+            "prefix-sum"
+        ],
+        "sampleQuestions": [
+            {
+                "question": "Walk me through building a model to predict something from raw data, end to end.",
+                "skill": "ML pipeline",
+                "lookFor": [
+                    "Problem framing and what 'good' means",
+                    "Data collection, cleaning, splitting",
+                    "Feature engineering, a baseline before anything fancy",
+                    "Evaluation against the baseline"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "What is overfitting, and what would make you suspect a model has it?",
+                "skill": "Generalisation",
+                "lookFor": [
+                    "Gap between train and validation performance",
+                    "Model complexity versus data size",
+                    "Regularisation, more data, simpler model, early stopping"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "How do you choose which metric to optimise for a classifier on an imbalanced dataset?",
+                "skill": "Evaluation",
+                "lookFor": [
+                    "Why accuracy misleads on imbalance",
+                    "Precision, recall, F1 and the trade-off between them",
+                    "Picking the metric from the real cost of each error"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "What is data leakage, and how have you caught it in practice?",
+                "skill": "Data leakage",
+                "lookFor": [
+                    "Information from the future or the label leaking into features",
+                    "Leakage through preprocessing done before the split",
+                    "Time-based splits for time-dependent data"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "How would you validate a model before it ever reaches production?",
+                "skill": "Validation",
+                "lookFor": [
+                    "Held-out and cross-validation",
+                    "Slicing performance by segment, not just the aggregate",
+                    "Sanity checks and a human review of edge cases"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "You trained a model that looks great offline, but it's failing in production. How do you debug it?",
+                "skill": "Train-serve skew",
+                "lookFor": [
+                    "Training-serving skew in features or preprocessing",
+                    "Data drift versus concept drift",
+                    "Checking the pipeline before the model itself"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "How would you serve a model that needs a prediction in under 50 milliseconds?",
+                "skill": "Serving",
+                "lookFor": [
+                    "Batch versus online inference",
+                    "Model size, quantisation, distillation",
+                    "Caching, warm pools, and what happens on a cold start"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "How do you design an A/B test to tell whether a new model is actually better?",
+                "skill": "Experimentation",
+                "lookFor": [
+                    "Randomisation unit and guardrail metrics",
+                    "Sample size and how long to run it",
+                    "Novelty effects and interaction with other experiments"
+                ],
+                "level": "mid"
+            }
+        ],
+        "designPrompts": [
+            {
+                "title": "Recommendation system",
+                "prompt": "Design a recommendation system for a content platform with tens of millions of users, including how you would measure whether it's working."
+            },
+            {
+                "title": "Fraud detection pipeline",
+                "prompt": "Design a system that scores transactions for fraud in real time, where both false positives and false negatives are expensive."
+            }
+        ]
+    },
+    {
+        "slug": "security-engineer",
+        "role": "Security Engineer",
+        "summary": "For candidates who secure systems: application security, threat modelling, incident response and secure design.",
+        "focusAreas": [
+            "Application security (OWASP-style vulnerabilities)",
+            "Authentication and authorization",
+            "Threat modelling",
+            "Incident response",
+            "Secure infrastructure and secrets"
+        ],
+        "codingTopics": [
+            "string",
+            "hash-map",
+            "bit-manipulation",
+            "array",
+            "stack"
+        ],
+        "sampleQuestions": [
+            {
+                "question": "Walk me through what you'd look for reviewing a pull request that adds a new API endpoint accepting user input.",
+                "skill": "Code review for security",
+                "lookFor": [
+                    "Input validation and output encoding",
+                    "AuthN versus authZ on the endpoint",
+                    "Where the input ends up: a query, a shell, a template"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "Explain SQL injection and how modern frameworks prevent it, plus a case where it can still slip through.",
+                "skill": "Injection",
+                "lookFor": [
+                    "Untrusted input reaching a query as code, not data",
+                    "Parameterised queries versus string concatenation",
+                    "Dynamic table or column names, ORMs used unsafely"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "What is XSS, and what's the difference between stored, reflected and DOM-based?",
+                "skill": "XSS",
+                "lookFor": [
+                    "Untrusted content rendered as executable script",
+                    "Where each type's payload lives and travels",
+                    "Output encoding and a Content Security Policy as defence in depth"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "How would you design authentication and session management for a new web app?",
+                "skill": "AuthN design",
+                "lookFor": [
+                    "Password hashing, MFA, account lockout without enabling enumeration",
+                    "Session tokens versus stateless tokens, and revocation",
+                    "Secure cookie flags, CSRF protection"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "Walk me through threat modelling a new feature before it ships.",
+                "skill": "Threat modelling",
+                "lookFor": [
+                    "Assets, entry points, trust boundaries",
+                    "STRIDE or an equivalent structured walk",
+                    "Turning findings into concrete mitigations, not just a list"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "What is SSRF, and why does it matter more once services talk to cloud metadata endpoints?",
+                "skill": "SSRF",
+                "lookFor": [
+                    "Server tricked into making a request on the attacker's behalf",
+                    "Cloud metadata endpoints as a common target",
+                    "Allow-lists, network segmentation, disabling redirects"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "How would you design least-privilege access for a service that touches several internal systems?",
+                "skill": "Access control",
+                "lookFor": [
+                    "Scoped, short-lived credentials over broad standing access",
+                    "Service identity and mutual TLS between services",
+                    "Auditing who has access to what, and why"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "Walk me through your first hour after being paged for a suspected active breach.",
+                "skill": "Incident response",
+                "lookFor": [
+                    "Confirm and scope before acting rashly",
+                    "Contain without destroying evidence",
+                    "Who gets told, and when, including legal and customers"
+                ],
+                "level": "senior"
+            }
+        ],
+        "designPrompts": [
+            {
+                "title": "Secrets and credentials service",
+                "prompt": "Design a secrets management system for an organisation with hundreds of services, where a leaked secret must be found and rotated fast."
+            },
+            {
+                "title": "Zero-trust internal network",
+                "prompt": "Design access to internal tools for a company moving away from a trusted-internal-network model to zero trust."
+            }
+        ]
+    },
+    {
+        "slug": "qa-test-engineer",
+        "role": "QA / Test Engineer",
+        "summary": "For candidates who build confidence in software before and after it ships: test strategy, automation and quality risk.",
+        "focusAreas": [
+            "Test strategy and coverage",
+            "Automation frameworks",
+            "Flaky tests and CI reliability",
+            "Regression and risk analysis",
+            "Bug investigation and reporting"
+        ],
+        "codingTopics": [
+            "array",
+            "string",
+            "hash-map",
+            "two-pointers",
+            "sorting"
+        ],
+        "sampleQuestions": [
+            {
+                "question": "How do you decide what to cover with unit tests versus integration tests versus end-to-end tests?",
+                "skill": "Test strategy",
+                "lookFor": [
+                    "The test pyramid and why each layer exists",
+                    "Speed and reliability trade-offs at each layer",
+                    "Not testing the same thing redundantly at every layer"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "Given a new feature with an acceptance criteria doc, how do you turn it into a test plan?",
+                "skill": "Test planning",
+                "lookFor": [
+                    "Breaking criteria into concrete test cases",
+                    "Edge cases and negative cases, not just the happy path",
+                    "Deciding what's worth automating versus checking once"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "A test suite that used to be reliable is now flaky. How do you investigate?",
+                "skill": "Flaky tests",
+                "lookFor": [
+                    "Distinguishing a real bug from a bad test",
+                    "Common causes: timing, shared state, order dependence",
+                    "Quarantine versus fix versus delete, and how you decide"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "How do you write tests that don't break every time the implementation changes?",
+                "skill": "Maintainable tests",
+                "lookFor": [
+                    "Testing behaviour and contracts, not internals",
+                    "Good use of test doubles versus over-mocking",
+                    "Readable failures that say what actually broke"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "How would you test a system you can't fully see the internals of, like a third-party integration?",
+                "skill": "Black-box testing",
+                "lookFor": [
+                    "Contract tests against the interface",
+                    "Simulating failure modes: timeouts, malformed responses, rate limits",
+                    "Monitoring in production as a form of testing"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "Walk me through triaging a bug report with a vague description like 'it doesn't work sometimes'.",
+                "skill": "Bug investigation",
+                "lookFor": [
+                    "Getting to a reliable repro before doing anything else",
+                    "Narrowing scope: environment, data, timing",
+                    "Distinguishing severity from priority"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "How do you decide what to automate versus what's better tested manually or exploratorily?",
+                "skill": "Automation strategy",
+                "lookFor": [
+                    "Cost of writing and maintaining automation versus its value",
+                    "Where exploratory testing finds things automation won't",
+                    "Regression-prone areas as the first automation target"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "How would you keep a CI pipeline's test suite fast as the codebase and suite both grow?",
+                "skill": "CI performance",
+                "lookFor": [
+                    "Parallelisation and sharding",
+                    "Splitting fast smoke tests from a slower full suite",
+                    "Data on which tests actually catch bugs, versus dead weight"
+                ],
+                "level": "senior"
+            }
+        ],
+        "designPrompts": [
+            {
+                "title": "End-to-end test infrastructure",
+                "prompt": "Design the end-to-end test infrastructure for a web app released several times a day, where slow or flaky tests currently block every release."
+            },
+            {
+                "title": "Load and reliability testing",
+                "prompt": "Design a load-testing strategy for a service ahead of a launch expected to bring ten times normal traffic."
+            }
+        ]
+    },
+    {
+        "slug": "data-scientist",
+        "role": "Data Scientist",
+        "summary": "For candidates who turn data into decisions: statistics, experimentation, analysis and communicating findings.",
+        "focusAreas": [
+            "Statistical reasoning",
+            "Experiment design",
+            "Exploratory data analysis",
+            "Communicating uncertainty",
+            "Practical modelling"
+        ],
+        "codingTopics": [
+            "array",
+            "hash-map",
+            "sorting",
+            "prefix-sum",
+            "two-pointers"
+        ],
+        "sampleQuestions": [
+            {
+                "question": "Walk me through how you'd approach a vague ask like 'figure out why signups dropped last month'.",
+                "skill": "Analytical approach",
+                "lookFor": [
+                    "Clarifying the actual question and what decision it feeds",
+                    "Looking at the data before forming a theory",
+                    "Segmenting to find where the drop is concentrated"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "Explain p-values and statistical significance to someone who doesn't have a stats background.",
+                "skill": "Statistical reasoning",
+                "lookFor": [
+                    "What a p-value actually means, and what it does not",
+                    "Significance versus practical importance",
+                    "The risk of testing many things and finding one by chance"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "What is confounding, and how have you dealt with it in an analysis?",
+                "skill": "Confounding",
+                "lookFor": [
+                    "A variable that affects both the supposed cause and the outcome",
+                    "Correlation is not causation, with a concrete example",
+                    "Controlling for it, or why you couldn't"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "How do you decide on sample size before running an experiment?",
+                "skill": "Power analysis",
+                "lookFor": [
+                    "Minimum detectable effect and the trade-off with runtime",
+                    "Baseline rate and variance driving the required sample",
+                    "What happens if you peek at results early"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "You're given a messy dataset with missing values and outliers. How do you approach cleaning it?",
+                "skill": "Data cleaning",
+                "lookFor": [
+                    "Understanding why data is missing before deciding how to handle it",
+                    "Outliers as signal versus noise, not automatically deleted",
+                    "Documenting cleaning decisions so they're reproducible"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "An A/B test shows a statistically significant lift, but the product team is skeptical. How do you build confidence in the result?",
+                "skill": "Experiment validation",
+                "lookFor": [
+                    "Sanity checks: sample ratio mismatch, pre-period balance",
+                    "Practical significance versus statistical significance",
+                    "Segment consistency and looking for a plausible mechanism"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "How do you explain a model or analysis's uncertainty to a stakeholder who wants a single number?",
+                "skill": "Communicating uncertainty",
+                "lookFor": [
+                    "Confidence or credible intervals in plain language",
+                    "Framing a range and what drives its width",
+                    "Not overstating confidence to seem more useful"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "How would you detect that an earlier analysis or dashboard is now giving misleading numbers?",
+                "skill": "Data quality",
+                "lookFor": [
+                    "Monitoring key metrics for unexplained shifts",
+                    "Upstream schema or tracking changes as a common cause",
+                    "A process for someone to flag a number that looks wrong"
+                ],
+                "level": "mid"
+            }
+        ],
+        "designPrompts": [
+            {
+                "title": "Experimentation platform",
+                "prompt": "Design the analysis pipeline for a company's A/B testing platform, from an experiment being launched to a trustworthy result reaching the team that ran it."
+            },
+            {
+                "title": "Churn analysis and intervention",
+                "prompt": "Design an approach to understand why customers churn and to identify who is at risk before they leave."
+            }
+        ]
+    },
+    {
+        "slug": "game-developer",
+        "role": "Game Developer",
+        "summary": "For candidates building games: real-time performance, gameplay systems, engines and the tricky edges of simulation.",
+        "focusAreas": [
+            "Real-time performance and frame budgets",
+            "Game loop and simulation",
+            "Memory management",
+            "Networking for multiplayer",
+            "Engine architecture (Unity/Unreal or custom)"
+        ],
+        "codingTopics": [
+            "matrix",
+            "array",
+            "hash-map",
+            "heap",
+            "graph"
+        ],
+        "sampleQuestions": [
+            {
+                "question": "Walk me through a game loop and why a fixed timestep matters for simulation.",
+                "skill": "Game loop",
+                "lookFor": [
+                    "Update and render separated, and why",
+                    "Delta time and frame-rate independence",
+                    "Fixed timestep for physics so behaviour is deterministic"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "Why does object pooling matter in a game, and where have you used it?",
+                "skill": "Memory and performance",
+                "lookFor": [
+                    "Allocation and garbage collection cost during gameplay",
+                    "Reusing objects like bullets or particles instead of allocating",
+                    "The trade-off: pool size versus memory held idle"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "How would you find out why a scene is dropping frames?",
+                "skill": "Profiling",
+                "lookFor": [
+                    "Profiling before guessing: CPU, GPU or memory bound",
+                    "Draw calls, overdraw, and batching",
+                    "Distinguishing a spike from a sustained cost"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "Explain the entity-component-system pattern, and when you'd reach for it over classic inheritance.",
+                "skill": "Architecture",
+                "lookFor": [
+                    "Composition over deep inheritance hierarchies",
+                    "Data-oriented layout for cache-friendly updates",
+                    "When ECS is overkill for a smaller game"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "How does collision detection typically work, and how would you speed it up for hundreds of objects?",
+                "skill": "Collision and spatial structures",
+                "lookFor": [
+                    "Broad phase versus narrow phase",
+                    "Spatial partitioning: grids, quadtrees or similar",
+                    "Trade-offs between accuracy and performance"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "How would you design client-server networking for a fast-paced multiplayer game with noticeable latency?",
+                "skill": "Multiplayer networking",
+                "lookFor": [
+                    "Client-side prediction and server reconciliation",
+                    "Lag compensation for hit detection",
+                    "What the server must remain authoritative over, and why"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "How do you manage state that must stay in sync between many players without the network becoming the bottleneck?",
+                "skill": "State synchronisation",
+                "lookFor": [
+                    "Delta compression: sending changes, not full state",
+                    "Prioritising what's visible or relevant to each player",
+                    "Handling packet loss and out-of-order delivery gracefully"
+                ],
+                "level": "senior"
+            },
+            {
+                "question": "How would you design a level-of-detail system for a large open world?",
+                "skill": "LOD and streaming",
+                "lookFor": [
+                    "Distance-based detail reduction for meshes and logic",
+                    "Streaming assets in and out without a visible hitch",
+                    "Balancing visual quality against memory and load"
+                ],
+                "level": "senior"
+            }
+        ],
+        "designPrompts": [
+            {
+                "title": "Real-time multiplayer arena",
+                "prompt": "Design the client-server architecture for a real-time multiplayer arena game for up to twenty players, where responsiveness matters more than perfect consistency."
+            },
+            {
+                "title": "Open-world streaming",
+                "prompt": "Design how a large open-world game streams its world in and out of memory as the player moves through it."
+            }
+        ]
     }
 ];
 
@@ -846,7 +1402,7 @@ export const BEHAVIORAL_SAMPLES = [
 ] as const;
 
 export const PRODUCT_STATS = {
-    "problems": 38,
+    "problems": 101,
     "languages": [
         "JavaScript",
         "TypeScript",
@@ -854,5 +1410,5 @@ export const PRODUCT_STATS = {
         "C++",
         "Java"
     ],
-    "roles": 7
+    "roles": 12
 } as const;

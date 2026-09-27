@@ -19,7 +19,7 @@ A state machine — not a giant prompt — decides the round, the question, when
 
 <img src="docs/screenshots/setup.png" width="820" alt="Setup form: role, level, format, job description, resume, GitHub">
 
-**Job description and GitHub are required** (resume is optional). GitHub is checked to actually exist, so a typo can't quietly cost you the questions about your own repos.
+**Job description and GitHub are required** (resume and a separate key-responsibilities note are optional, for a job description that's thin on what the day-to-day actually involves). GitHub is checked to actually exist, so a typo can't quietly cost you the questions about your own repos.
 
 One analysis turns those into:
 - weighted skills and role-specific questions, each with what a strong answer covers
@@ -27,7 +27,7 @@ One analysis turns those into:
 - vocabulary that helps speech recognition ("Kubernetes", "PostgreSQL")
 - **which coding problems get picked** — no model involved. Your JD/resume/repos are read for the kind of work the role is about (scheduling, graphs, caching, streams, parsing, payments…), scored against a tagged problem bank, and the next problem adapts to how the last one went: harder after a clean solve, easier after one you couldn't finish. The editor opens in your language.
 
-If the model is unavailable, a hand-written question bank for seven roles takes over instead.
+If the model is unavailable, a hand-written question bank for 12 roles takes over instead.
 
 <img src="docs/screenshots/lobby.png" width="820" alt="Lobby: mic and speaker check, interview outline">
 
