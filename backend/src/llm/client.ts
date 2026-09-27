@@ -76,33 +76,46 @@ function parseRetryAfter(headers: Headers): number | undefined {
     return Number(match[1] ?? 0) * 60_000 + Number(match[2] ?? 0) * 1000 + Number(match[3] ?? 0);
 }
 
-async function post(model: string, messages: ChatMessage[], options: CompletionOptions, stream: boolean): Promise<Response> {
-    if (!config.llmApiKey) throw new Error("GROQ_API_KEY is not set. Set it in backend/.env before starting an interview.");
+/** One model reachable at one provider. `id` disambiguates the router's per-model bookkeeping when two
+ * providers happen to serve a model of the same name. */
+interface ModelEndpoint {
+    id: string;
+    model: string;
+    baseUrl: string;
+    apiKey: string;
+}
+
+function primaryEndpoint(model: string): ModelEndpoint {
+    return { id: model, model, baseUrl: config.llmBaseUrl, apiKey: config.llmApiKey ?? "" };
+}
+
+async function post(endpoint: ModelEndpoint, messages: ChatMessage[], options: CompletionOptions, stream: boolean): Promise<Response> {
+    if (!endpoint.apiKey) throw new Error("GROQ_API_KEY is not set. Set it in backend/.env before starting an interview.");
     const body = {
-        model,
+        model: endpoint.model,
         messages,
         stream,
         temperature: options.temperature ?? 0.6,
         max_completion_tokens: options.maxTokens ?? 400,
         ...(options.json ? { response_format: { type: "json_object" } } : {}),
-        ...(rejectedReasoning.has(model) ? {} : reasoningParams(model, options.reasoning ?? "none")),
+        ...(rejectedReasoning.has(endpoint.id) ? {} : reasoningParams(endpoint.model, options.reasoning ?? "none")),
     };
-    const response = await fetch(`${config.llmBaseUrl}/chat/completions`, {
+    const response = await fetch(`${endpoint.baseUrl}/chat/completions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.llmApiKey}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${endpoint.apiKey}` },
         body: JSON.stringify(body),
         signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(90_000)]) : AbortSignal.timeout(90_000),
     });
 
     const limit = headerNumber(response.headers, "x-ratelimit-limit-tokens");
-    if (limit !== undefined) router.learnLimit(model, limit);
+    if (limit !== undefined) router.learnLimit(endpoint.id, limit);
 
     if (!response.ok) {
         const detail = await response.text().catch(() => "");
-        if (response.status === 400 && /reasoning/i.test(detail) && !rejectedReasoning.has(model)) {
-            rejectedReasoning.add(model);
-            logger.warn({ model }, "Model rejected reasoning parameters; retrying without them");
-            return post(model, messages, options, stream);
+        if (response.status === 400 && /reasoning/i.test(detail) && !rejectedReasoning.has(endpoint.id)) {
+            rejectedReasoning.add(endpoint.id);
+            logger.warn({ model: endpoint.id }, "Model rejected reasoning parameters; retrying without them");
+            return post(endpoint, messages, options, stream);
         }
         throw new HttpFailure(response.status, `LLM ${response.status}: ${detail.slice(0, 300)}`, parseRetryAfter(response.headers));
     }
@@ -115,7 +128,14 @@ async function post(model: string, messages: ChatMessage[], options: CompletionO
  */
 async function send(messages: ChatMessage[], options: CompletionOptions, stream: boolean): Promise<{ response: Response; model: string; tokens: number }> {
     const preferred = options.model ?? config.groqModel;
-    const chain = [preferred, ...(options.fallbackModels ?? config.llmFallbackModels).filter((m) => m !== preferred)];
+    const primaryModels = [preferred, ...(options.fallbackModels ?? config.llmFallbackModels).filter((m) => m !== preferred)];
+    // The secondary provider — a different account, or a different free provider entirely — is tried only
+    // once every model above is rate-limited or down, so a whole exhausted first account still finishes
+    // the interview instead of failing every call for the rest of the day.
+    const chain: ModelEndpoint[] = primaryModels.map(primaryEndpoint);
+    if (config.secondaryLlm) chain.push({ id: `secondary:${config.secondaryLlm.model}`, model: config.secondaryLlm.model, baseUrl: config.secondaryLlm.baseUrl, apiKey: config.secondaryLlm.apiKey });
+    const ids = chain.map((e) => e.id);
+    const byId = new Map(chain.map((e) => [e.id, e]));
     const tokens = messages.reduce((n, m) => n + estimateTokens(m.content), 0) + (options.maxTokens ?? 400);
     const deadline = Date.now() + (options.maxWaitMs ?? 8_000);
     const failed = new Set<string>();
@@ -123,23 +143,24 @@ async function send(messages: ChatMessage[], options: CompletionOptions, stream:
 
     for (;;) {
         if (options.signal?.aborted) throw Object.assign(new Error("aborted"), { name: "AbortError" });
-        const model = router.pick(chain, tokens, failed);
+        const id = router.pick(ids, tokens, failed);
 
-        if (!model) {
-            const wait = Math.min(router.waitMs(chain.filter((m) => !failed.has(m)), tokens), 15_000);
-            if (Date.now() + wait > deadline || failed.size >= chain.length) {
-                throw lastError instanceof HttpFailure && lastError.status !== 429 ? lastError : new RateLimitedError(router.availability(chain).retryAfterMs);
+        if (!id) {
+            const wait = Math.min(router.waitMs(ids.filter((m) => !failed.has(m)), tokens), 15_000);
+            if (Date.now() + wait > deadline || failed.size >= ids.length) {
+                throw lastError instanceof HttpFailure && lastError.status !== 429 ? lastError : new RateLimitedError(router.availability(ids).retryAfterMs);
             }
             await new Promise((resolve) => setTimeout(resolve, Math.max(150, wait)));
             failed.clear();
             continue;
         }
 
-        router.record(model, tokens);
+        const endpoint = byId.get(id)!;
+        router.record(id, tokens);
         try {
-            const response = await post(model, messages, options, stream);
-            if (model !== preferred) logger.info({ from: preferred, to: model }, "Using a fallback model");
-            return { response, model, tokens };
+            const response = await post(endpoint, messages, options, stream);
+            if (id !== preferred) logger.info({ from: preferred, to: id }, "Using a fallback model");
+            return { response, model: id, tokens };
         } catch (error) {
             lastError = error;
             if (options.signal?.aborted) throw error;
@@ -149,15 +170,15 @@ async function send(messages: ChatMessage[], options: CompletionOptions, stream:
                 // per model) clears as the day's usage ages out, and hammering it meanwhile only wastes requests.
                 const daily = error instanceof HttpFailure && /per day|\((?:TPD|RPD)\)/i.test(error.message);
                 const wanted = error instanceof HttpFailure ? (error.retryAfterMs ?? 20_000) : 20_000;
-                router.cooldown(model, Math.min(Math.max(wanted, 1_000), daily ? DAILY_COOLDOWN_CAP_MS : 60_000));
-                logger.warn({ model, retryAfterMs: error instanceof HttpFailure ? error.retryAfterMs : undefined, detail: error instanceof Error ? error.message.slice(0, 220) : undefined }, "Model is rate limited; trying another");
+                router.cooldown(id, Math.min(Math.max(wanted, 1_000), daily ? DAILY_COOLDOWN_CAP_MS : 60_000));
+                logger.warn({ model: id, retryAfterMs: error instanceof HttpFailure ? error.retryAfterMs : undefined, detail: error instanceof Error ? error.message.slice(0, 220) : undefined }, "Model is rate limited; trying another");
             } else if (status !== undefined && status >= 500) {
-                router.cooldown(model, 5_000);
-                failed.add(model);
+                router.cooldown(id, 5_000);
+                failed.add(id);
             } else if (status === undefined && !(error instanceof HttpFailure)) {
                 // Network trouble or a timeout: treat the model as unavailable for this call.
-                router.cooldown(model, 5_000);
-                failed.add(model);
+                router.cooldown(id, 5_000);
+                failed.add(id);
             } else {
                 throw error; // a 4xx that another model won't fix (bad request, auth)
             }
@@ -224,11 +245,17 @@ export function setLlmForTesting(client: LlmClient | null): void {
 }
 
 /** The models in use. The evaluation model may be swapped for the dialogue model at boot if it isn't available. */
-export const models = { dialogue: config.groqModel, evaluation: config.groqEvalModel, fallbacks: config.llmFallbackModels };
+export const models = {
+    dialogue: config.groqModel,
+    evaluation: config.groqEvalModel,
+    fallbacks: config.llmFallbackModels,
+    secondary: config.secondaryLlm ? `secondary:${config.secondaryLlm.model}` : undefined,
+};
 
 /** Whether the interviewer could get an answer from the language model right now, for refusing a new call early. */
 export function llmCapacity(): { available: boolean; retryAfterSeconds: number } {
-    const { available, retryAfterMs } = router.availability([models.dialogue, ...models.fallbacks]);
+    const ids = [models.dialogue, ...models.fallbacks, ...(models.secondary ? [models.secondary] : [])];
+    const { available, retryAfterMs } = router.availability(ids);
     return { available, retryAfterSeconds: Math.ceil(retryAfterMs / 1000) };
 }
 
@@ -248,8 +275,11 @@ export async function verifyModels(): Promise<void> {
             logger.warn({ model: models.evaluation, fallback: models.dialogue }, "The evaluation model is not available; scoring will use the dialogue model");
             models.evaluation = models.dialogue;
         }
-        logger.info({ dialogue: models.dialogue, evaluation: models.evaluation, fallbacks: models.fallbacks }, "LLM models ready");
+        logger.info({ dialogue: models.dialogue, evaluation: models.evaluation, fallbacks: models.fallbacks, secondary: models.secondary }, "LLM models ready");
     } catch (error) {
         logger.warn({ err: error }, "Could not verify the model list");
     }
+    // Not verified against the provider (its /models endpoint may not match this shape): just noted, so a
+    // typo'd secondary key is at least visible at boot instead of only surfacing when the primary runs out.
+    if (config.secondaryLlm) logger.info({ baseUrl: config.secondaryLlm.baseUrl, model: config.secondaryLlm.model }, "Secondary LLM provider configured as a fallback");
 }

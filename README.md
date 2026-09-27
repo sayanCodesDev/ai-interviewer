@@ -135,7 +135,7 @@ LLM_BASE_URL=http://127.0.0.1:2099/v1 LLM_API_KEY=mock VOICE_MODE=text npm run d
 
 ## Limits you should know about
 
-- **Free Groq keys aren't enough for real traffic.** 8,000 tokens/min plus ~200,000/day per model. One 45-min interview uses ~60–70k, so a free key supports a handful a day. When the daily allowance is gone the API says so up front instead of failing mid-call, and reports wait instead of failing. For real use, put a paid key in `GROQ_API_KEY` or point `LLM_BASE_URL` at another OpenAI-compatible provider — no code change needed.
+- **Free Groq keys aren't enough for real traffic.** 8,000 tokens/min plus ~200,000/day per model. One 45-min interview uses ~60–70k, so a free key supports a handful a day. When the daily allowance is gone the API says so up front instead of failing mid-call, and reports wait instead of failing. For real use, put a paid key in `GROQ_API_KEY` or point `LLM_BASE_URL` at another OpenAI-compatible provider — no code change needed. For staying free, set `SECONDARY_LLM_BASE_URL`/`_API_KEY`/`_MODEL` to a second account or a different free provider (Cerebras, OpenRouter's free models, Google AI Studio's OpenAI-compatible endpoint) — it's tried only once every model on the first is exhausted, so one account running out for the day doesn't stop the interview.
 - **Docker is required** on the machine running the API, for the code sandbox. Production refuses the unsandboxed local runner.
 - **Behind NAT (any cloud VM), WebRTC needs setup**: `WEBRTC_PUBLIC_IP`, a UDP port range, and that range open in the firewall. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 - **English only.** Accent and voice are selectable.
