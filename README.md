@@ -12,7 +12,7 @@ It is practice feedback, not a hiring decision, and the product says so.
 |---|---|---|
 | Quick screen | 20 min | Introduction · background · 1 coding problem · wrap-up |
 | Standard | 45 min | Introduction · background · 2 coding problems · JD-specific technical · behavioural · wrap-up |
-| Full loop | 75 min | Standard + a 3rd coding problem + system design (juniors get concept questions instead) |
+| Full loop | 75 min | Standard + a 3rd coding problem + system design on a whiteboard (juniors get concept questions instead) |
 | Coding drill | 30 min | Four DSA problems back to back, complexity question after each |
 
 A state machine — not a giant prompt — decides the round, the question, when to open the editor, when to hint, and when time is up. The model only voices each step.
@@ -27,7 +27,7 @@ One analysis turns those into:
 - vocabulary that helps speech recognition ("Kubernetes", "PostgreSQL")
 - **which coding problems get picked** — no model involved. Your JD/resume/repos are read for the kind of work the role is about (scheduling, graphs, caching, streams, parsing, payments…), scored against a tagged problem bank, and the next problem adapts to how the last one went: harder after a clean solve, easier after one you couldn't finish. The editor opens in your language.
 
-If the model is unavailable, a hand-written question bank for 12 roles takes over instead — seeded per interview so two candidates in the same role don't open with the identical set every time.
+If the model is unavailable, a hand-written question bank for 15 roles takes over instead — seeded per interview so two candidates in the same role don't open with the identical set every time. Alongside the usual engineering disciplines, this covers Amazon-style **SDE 1 / SDE 2** (the correctness-and-ownership versus scope-and-judgment split that actually separates those loops) and **Forward Deployed Engineer** (build fast against messy, real-world data).
 
 <img src="docs/screenshots/lobby.png" width="820" alt="Lobby: mic and speaker check, interview outline">
 
@@ -46,9 +46,11 @@ If the model is unavailable, a hand-written question bank for 12 roles takes ove
 - echo recognition, so the interviewer's own voice leaking into your mic doesn't make it interrupt itself
 - Opus + forward error correction, a limiter, and text rewritten for the ear ("O(n log n)", "k8s", "->")
 
-## A professional editor
+## A professional editor — and a real whiteboard
 
 Monaco (VS Code's editor), self-hosted. JavaScript, TypeScript, Python, C++, Java. **Run** checks the examples, **Submit** grades against hidden tests. Per-problem, per-language starter code and saved drafts, so switching language never loses work.
+
+The system-design round swaps in an embedded **Excalidraw** whiteboard — boxes, arrows and labels, the tool people already associate with these interviews — instead of a markdown scratchpad. The interviewer still reads it as structured text (which boxes exist, what points to what), not a screenshot: no vision model, no extra latency, and no risk of misreading a label.
 
 102 problems in original wording (classic patterns and real work: rate limiters, LRU caches, log analysis, calendars, graphs, sliding windows, DP) — not scraped from LeetCode or CodeChef, since their statements are copyrighted and every problem here needs tests verified against a reference solution. Each has an independent solution that must agree with it on every hidden test, and starter code checked in all five languages.
 
@@ -66,6 +68,7 @@ Monaco (VS Code's editor), self-hosted. JavaScript, TypeScript, Python, C++, Jav
 <img src="docs/screenshots/report-code-review.png" width="820" alt="Line-by-line code review on submitted code">
 
 - A prioritised study plan grounded in what actually happened in *your* interview — each topic cites the gap it came from (shown as a quote, like the strengths above), not generic advice for the role — with real resource links
+- **Practice this**, on every study-plan topic and for the report as a whole: a follow-up interview in the same track, same role/level/JD, with coding problems and questions weighted toward exactly what you got wrong — and the interviewer's opening references it, so it doesn't feel like a fresh stranger every time
 
 <img src="docs/screenshots/report-plan.png" width="820" alt="Prioritised study plan with practice tasks and resources">
 

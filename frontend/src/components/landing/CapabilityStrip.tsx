@@ -3,10 +3,10 @@ import { m } from "motion/react";
 import { fadeUp, inViewOnce, stagger } from "@/lib/motion";
 
 const ITEMS = [
-    { title: "A real loop", text: "Background, coding, technical and behavioral rounds." },
-    { title: "Live code editor", text: "Run, then submit against hidden tests." },
+    { title: "A real loop", text: "Background, coding, technical, system design and behavioral rounds." },
+    { title: "Live editor and whiteboard", text: "Run code against hidden tests; sketch boxes and arrows for system design." },
     { title: "Built from your job", text: "Paste a job description; add a resume or GitHub." },
-    { title: "A scored report", text: "Feedback, a transcript and a study plan." },
+    { title: "A scored report", text: "Feedback, a transcript, a study plan, and one click to retry what you missed." },
 ];
 
 export function CapabilityStrip() {

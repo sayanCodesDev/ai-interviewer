@@ -120,7 +120,7 @@ export function Bento() {
                     <TileShell
                         eyebrow="Editor"
                         title="Then write it."
-                        text="When a problem comes up, a full code editor opens beside the conversation. Run your code, then submit it for review."
+                        text="When a problem comes up, a full code editor opens beside the conversation. Run your code, then submit it for review — and for system design, a whiteboard for boxes and arrows instead of typed notes."
                         className="md:col-span-2 lg:col-span-5"
                     >
                         <div className="overflow-hidden rounded-xl border border-night-line bg-night-sunken px-4 py-4">
@@ -150,7 +150,7 @@ export function Bento() {
                         tone="signal"
                         eyebrow="Report"
                         title="A report you can act on."
-                        text="A score out of 100, feedback on every part, the full transcript and a study plan, each point tied to something you said."
+                        text="A score out of 100, feedback on every part, the full transcript and a study plan, each point tied to something you said — then one click to retry the exact topics you missed."
                         className="md:col-span-2 lg:col-span-4"
                     >
                         <p className="font-serif text-2xl leading-snug tracking-tight italic">“Say your edge cases out loud before you start typing.”</p>
