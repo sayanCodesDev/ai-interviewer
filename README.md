@@ -27,7 +27,7 @@ One analysis turns those into:
 - vocabulary that helps speech recognition ("Kubernetes", "PostgreSQL")
 - **which coding problems get picked** — no model involved. Your JD/resume/repos are read for the kind of work the role is about (scheduling, graphs, caching, streams, parsing, payments…), scored against a tagged problem bank, and the next problem adapts to how the last one went: harder after a clean solve, easier after one you couldn't finish. The editor opens in your language.
 
-If the model is unavailable, a hand-written question bank for 12 roles takes over instead.
+If the model is unavailable, a hand-written question bank for 12 roles takes over instead — seeded per interview so two candidates in the same role don't open with the identical set every time.
 
 <img src="docs/screenshots/lobby.png" width="820" alt="Lobby: mic and speaker check, interview outline">
 
@@ -65,7 +65,7 @@ Monaco (VS Code's editor), self-hosted. JavaScript, TypeScript, Python, C++, Jav
 
 <img src="docs/screenshots/report-code-review.png" width="820" alt="Line-by-line code review on submitted code">
 
-- A prioritised study plan with real resource links
+- A prioritised study plan grounded in what actually happened in *your* interview — each topic cites the gap it came from (shown as a quote, like the strengths above), not generic advice for the role — with real resource links
 
 <img src="docs/screenshots/report-plan.png" width="820" alt="Prioritised study plan with practice tasks and resources">
 
@@ -138,7 +138,7 @@ LLM_BASE_URL=http://127.0.0.1:2099/v1 LLM_API_KEY=mock VOICE_MODE=text npm run d
 - **Free Groq keys aren't enough for real traffic.** 8,000 tokens/min plus ~200,000/day per model. One 45-min interview uses ~60–70k, so a free key supports a handful a day. When the daily allowance is gone the API says so up front instead of failing mid-call, and reports wait instead of failing. For real use, put a paid key in `GROQ_API_KEY` or point `LLM_BASE_URL` at another OpenAI-compatible provider — no code change needed. For staying free, set `SECONDARY_LLM_BASE_URL`/`_API_KEY`/`_MODEL` to a second account or a different free provider (Cerebras, OpenRouter's free models, Google AI Studio's OpenAI-compatible endpoint) — it's tried only once every model on the first is exhausted, so one account running out for the day doesn't stop the interview.
 - **Docker is required** on the machine running the API, for the code sandbox. Production refuses the unsandboxed local runner.
 - **Behind NAT (any cloud VM), WebRTC needs setup**: `WEBRTC_PUBLIC_IP`, a UDP port range, and that range open in the firewall. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
-- **English only.** Accent and voice are selectable.
+- **English only.** Accent and voice are selectable, with a sample of each voice playable right in setup.
 - **Rate limits are per server instance** by default. With several instances behind a load balancer, put a shared store or gateway limit in front for exact global limits.
 - **Live calls are pinned to the instance that holds them.** A reconnect within 90 seconds must reach the same instance; otherwise the interview closes and its report generates.
 
