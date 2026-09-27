@@ -14,7 +14,7 @@ import { personaPrompt } from "../interview/prompts";
 import { InterviewRecorder } from "../interview/recorder";
 import { VOICES, finishInterview, markStarted } from "../interview/service";
 import { EchoGuard } from "../voice/echoGuard";
-import { isBackchannel, isInterruption } from "../voice/turnTaker";
+import { isBackchannel, isInterruption, isMoveOnConfirmation } from "../voice/turnTaker";
 import { removeLive } from "./registry";
 import { Voice, type VoiceFactory, type VoiceLike } from "./voice";
 
@@ -243,7 +243,10 @@ export class LiveInterview {
         if (config.voiceEchoGuard && this.echo.isEcho(text, 2)) return;
 
         this.clearSilenceTimers();
-        if (!isBackchannel(text)) this.candidateStirredAt = Date.now();
+        // While a move is pending, a short "yes" or "let's continue" is agreeing to it, not new speech: it
+        // must not read as stirring, or it would cancel the very move it is confirming.
+        const isStir = this.conductor.hasPendingMove ? !isMoveOnConfirmation(text) : !isBackchannel(text);
+        if (isStir) this.candidateStirredAt = Date.now();
         // Cut the interviewer off only for real speech, not "mm-hmm" or a stray sound. And not on the first word or two:
         // that is exactly what a stray noise or a trace of echo looks like. Until it is clear the candidate really is
         // talking (a few words, or a finished utterance) the interviewer only dips their voice, which recovers by itself.
@@ -271,6 +274,10 @@ export class LiveInterview {
     private onCandidateTurn(text: string): void {
         this.send({ type: "CAPTION", id: this.candidateCaptionId, role: "candidate", text, final: true });
         this.candidateCaptionId = `c${++this.captionSeq}`;
+        // A move the interviewer announced is still pending: "yes", "sure", "let's continue" is confirming it,
+        // not a fresh answer about the question just left behind. Leave it alone and let the pause commit the
+        // move and ask what comes next, instead of reopening the old topic or silently dropping it either way.
+        if (this.conductor.hasPendingMove && isMoveOnConfirmation(text)) return;
         // "Okay", "right", "mm-hmm" after something that was not a question is the candidate listening, not answering:
         // a person carries on rather than reacting to it. It does not interrupt, and it does not call off a move on.
         if (isBackchannel(text) && !this.conductor.lastInterviewerAskedQuestion) return;
@@ -448,26 +455,32 @@ export class LiveInterview {
      */
     private async perform(first: Turn | null): Promise<void> {
         let turn = first;
-        for (let guard = 0; turn && guard < 8 && !this.finalized && this.voice; guard++) {
-            let outcome = await this.speak(turn);
-            if (this.finalized) return;
-            for (const event of outcome.events) this.send(event);
-
-            if (outcome.transition) {
-                // The interviewer has said it is moving on. Give the candidate a moment to add something first; if they do,
-                // nothing has moved and they are answered where they are.
-                if (!(await this.beforeMovingOn())) {
-                    this.conductor.cancelTransition();
-                    break;
-                }
-                outcome = this.conductor.commitTransition();
+        try {
+            for (let guard = 0; turn && guard < 8 && !this.finalized && this.voice; guard++) {
+                let outcome = await this.speak(turn);
+                if (this.finalized) return;
                 for (const event of outcome.events) this.send(event);
+
+                if (outcome.transition) {
+                    // The interviewer has said it is moving on. Give the candidate a moment to add something first; if they do,
+                    // nothing has moved and they are answered where they are.
+                    if (!(await this.beforeMovingOn())) {
+                        this.conductor.cancelTransition();
+                        break;
+                    }
+                    outcome = this.conductor.commitTransition();
+                    for (const event of outcome.events) this.send(event);
+                }
+                if (outcome.ended) {
+                    void this.finalize(outcome.ended);
+                    return;
+                }
+                turn = outcome.next;
             }
-            if (outcome.ended) {
-                void this.finalize(outcome.ended);
-                return;
-            }
-            turn = outcome.next;
+        } catch (error) {
+            // Whatever broke mid-turn, the interview must not just go quiet with nothing watching for the
+            // candidate: fall through to watchSilence() below the same as a normal turn would.
+            logger.error({ err: error, interviewId: this.id }, "A turn failed mid-flight");
         }
         this.watchSilence();
     }

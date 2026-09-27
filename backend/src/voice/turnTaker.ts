@@ -42,6 +42,23 @@ export function isBackchannel(text: string): boolean {
     return trimmed.length > 0 && (BACKCHANNEL.test(trimmed) || FILLER_ONLY.test(trimmed));
 }
 
+/** Cues, beyond plain backchannel, that a short reply is agreeing to move forward rather than answering. */
+const CONTINUE_CUES = /\b(continue|move on|go ahead|go on|next question|sounds good|works for me|let'?s (?:do (?:it|that)|go|continue))\b/i;
+
+/**
+ * A short reply that confirms an announced move ("yes", "sure", "let's continue", "go ahead") rather than
+ * new content about the question just left behind. Meant to be checked only while the interviewer has
+ * announced a move and is waiting on the candidate: outside that moment a short reply is just brief, not
+ * confirmation of anything, and this would misread it.
+ */
+export function isMoveOnConfirmation(text: string): boolean {
+    const trimmed = text.trim();
+    if (!trimmed || trimmed.includes("?")) return false;
+    if (isBackchannel(trimmed)) return true;
+    const words = trimmed.split(/\s+/).filter(Boolean);
+    return words.length <= 5 && CONTINUE_CUES.test(trimmed);
+}
+
 /** Real speech worth interrupting the interviewer for: not "mm-hmm", and not a stray syllable. */
 export function isInterruption(text: string): boolean {
     const trimmed = text.trim();
