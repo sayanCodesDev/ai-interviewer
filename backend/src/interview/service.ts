@@ -45,6 +45,8 @@ export const createInterviewSchema = z.object({
         .trim()
         .min(MIN_JOB_DESCRIPTION_CHARS, `That is too short to be a job description. Paste the whole thing (at least ${MIN_JOB_DESCRIPTION_CHARS} characters) so the questions fit the role.`)
         .max(6_000, "The job description is limited to 6,000 characters."),
+    // Optional: what the job description alone often leaves vague. Folded into the same analysis.
+    responsibilities: z.string().trim().max(2_000, "Keep responsibilities to 2,000 characters.").optional(),
     githubUrl: z
         .string({ error: "Add your GitHub profile: the interviewer asks about your real projects." })
         .trim()
@@ -84,6 +86,7 @@ export async function createInterview(userId: string, input: CreateInterviewInpu
             format: input.format,
             durationMinutes: preset.minutes,
             jobDescription: sanitizeUntrusted(input.jobDescription, 6_000),
+            responsibilities: input.responsibilities ? sanitizeUntrusted(input.responsibilities, 2_000) : null,
             resumeText: resumeText ?? null,
             githubUsername,
             voice: input.voice,
@@ -113,10 +116,14 @@ export async function preparePlan(interviewId: string): Promise<void> {
         if (!row || row.planStatus === "READY") return;
 
         const github = row.githubUsername ? await fetchGithubProfile(row.githubUsername) : null;
+        // Responsibilities is a separate field in the form, but one analysis: fold it into the same job
+        // description text so every consumer (signals, keyterms, the model's own reading of the role) sees it
+        // without needing to know there are two fields.
+        const jobDescription = [row.jobDescription, row.responsibilities ? `Key responsibilities:\n${row.responsibilities}` : ""].filter(Boolean).join("\n\n") || undefined;
         const analysis = await analyseCandidate({
             role: row.targetRole,
             level: row.level as Level,
-            jobDescription: row.jobDescription ?? undefined,
+            jobDescription,
             resumeText: row.resumeText ?? undefined,
             github,
         });

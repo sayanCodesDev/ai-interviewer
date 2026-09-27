@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 
 // Shown until the options load, and used if that request fails, so the form is never empty.
 const FALLBACK: InterviewOptions = {
-    roles: ["Full Stack Developer", "Frontend Engineer", "Backend Engineer", "DevOps / SRE Engineer", "Data Engineer", "Mobile App Developer (React Native/Flutter)", "System Architect / Tech Lead"],
+    roles: ["Full Stack Developer", "Frontend Engineer", "Backend Engineer", "DevOps / SRE Engineer", "Data Engineer", "Mobile App Developer (React Native/Flutter)", "System Architect / Tech Lead", "Machine Learning Engineer", "Security Engineer", "QA / Test Engineer", "Data Scientist", "Game Developer"],
     levels: ["intern", "junior", "mid", "senior", "staff"],
     formats: [
         { id: "quick", label: "Quick screen", minutes: 20, description: "A short phone-screen: introductions, your background and one coding problem." },
@@ -47,6 +47,7 @@ const GITHUB_PROFILE = /^(https?:\/\/)?(www\.)?(github\.com\/)?[A-Za-z0-9][A-Za-
 const MAX_JD = 6000;
 /** Mirrors the server: anything shorter cannot say what a role needs. */
 const MIN_JD = 60;
+const MAX_RESPONSIBILITIES = 2000;
 const MAX_RESUME_BYTES = 2 * 1024 * 1024;
 
 function RadioCard({ name, value, checked, onChange, title, meta, description }: { name: string; value: string; checked: boolean; onChange: () => void; title: string; meta?: string; description?: string }) {
@@ -77,6 +78,7 @@ export function Setup() {
     const [level, setLevel] = useState<Level>("mid");
     const [format, setFormat] = useState<Format>("standard");
     const [jobDescription, setJobDescription] = useState("");
+    const [responsibilities, setResponsibilities] = useState("");
     const [githubUrl, setGithubUrl] = useState("");
     const [resume, setResume] = useState<File | null>(null);
     const [voice, setVoice] = useState(FALLBACK.voices[0]!.id);
@@ -117,6 +119,7 @@ export function Setup() {
         if (!jd) next.jobDescription = "Paste the job description: the interview is built from it.";
         else if (jd.length < MIN_JD) next.jobDescription = `That is too short to be a job description. Paste the whole thing (at least ${MIN_JD} characters) so the questions fit the role.`;
         else if (jobDescription.length > MAX_JD) next.jobDescription = `The job description is limited to ${MAX_JD.toLocaleString()} characters.`;
+        if (responsibilities.length > MAX_RESPONSIBILITIES) next.responsibilities = `Keep responsibilities to ${MAX_RESPONSIBILITIES.toLocaleString()} characters.`;
         setErrors(next);
         if (Object.keys(next).length > 0) return;
 
@@ -127,6 +130,7 @@ export function Setup() {
         form.set("voice", voice);
         form.set("accent", accent);
         form.set("jobDescription", jd);
+        if (responsibilities.trim()) form.set("responsibilities", responsibilities.trim());
         form.set("githubUrl", trimmed);
         if (resume) form.set("resume", resume);
 
@@ -221,6 +225,27 @@ export function Setup() {
                                     onChange={(event) => {
                                         setJobDescription(event.target.value);
                                         if (errors.jobDescription) setErrors((c) => { const { jobDescription: _j, ...rest } = c; return rest; });
+                                    }}
+                                />
+                            )}
+                        </Field>
+
+                        <Field
+                            label="Key responsibilities (optional)"
+                            htmlFor="responsibilities"
+                            error={errors.responsibilities}
+                            hint={`If the description above doesn't spell out what you'd actually be doing day to day, add it here. ${responsibilities.length.toLocaleString()} / ${MAX_RESPONSIBILITIES.toLocaleString()}`}
+                        >
+                            {(control) => (
+                                <Textarea
+                                    {...control}
+                                    name="responsibilities"
+                                    rows={3}
+                                    placeholder="Own the payments API, review PRs, be on call one week in four…"
+                                    value={responsibilities}
+                                    onChange={(event) => {
+                                        setResponsibilities(event.target.value);
+                                        if (errors.responsibilities) setErrors((c) => { const { responsibilities: _r, ...rest } = c; return rest; });
                                     }}
                                 />
                             )}

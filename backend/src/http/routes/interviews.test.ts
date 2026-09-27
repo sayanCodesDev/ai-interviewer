@@ -299,7 +299,7 @@ describe("options", () => {
     test("the setup form can load its choices without signing in", async () => {
         const res = await new TestClient(server.url).get("/api/interview-options");
         assert.equal(res.status, 200);
-        assert.equal(res.body.roles.length, 7);
+        assert.equal(res.body.roles.length, 12);
         assert.deepEqual(res.body.levels, ["intern", "junior", "mid", "senior", "staff"]);
         assert.ok(res.body.formats.find((f: any) => f.id === "standard").minutes === 45);
         assert.ok(res.body.voices.length >= 4);

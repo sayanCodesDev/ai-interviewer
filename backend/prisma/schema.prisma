@@ -90,6 +90,9 @@ model Interview {
   format          String
   durationMinutes Int
   jobDescription  String?
+  /// Optional, separate from jobDescription: what the candidate says they'd actually be doing day to day,
+  /// folded into the same analysis (signals, questions, keyterms) when the job description alone is thin on it.
+  responsibilities String?
   resumeText      String?
   githubUsername  String?
   voice           String          @default("aura-2-thalia-en")

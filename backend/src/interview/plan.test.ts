@@ -16,8 +16,8 @@ afterEach(() => setLlmForTesting(null));
 
 describe("role banks", () => {
     test("every role has enough technical questions across levels, and design prompts", () => {
-        assert.equal(ROLE_BANKS.length, 7);
-        assert.equal(new Set(ROLE_BANKS.map((b) => b.slug)).size, 7);
+        assert.equal(ROLE_BANKS.length, 12);
+        assert.equal(new Set(ROLE_BANKS.map((b) => b.slug)).size, 12);
         for (const bank of ROLE_BANKS) {
             assert.ok(bank.technical.length >= 9, `${bank.role} has ${bank.technical.length} questions`);
             for (const level of LEVELS) {
@@ -30,7 +30,7 @@ describe("role banks", () => {
     });
 
     test("the setup form's roles all have a bank", () => {
-        for (const role of ["Full Stack Developer", "Frontend Engineer", "Backend Engineer", "DevOps / SRE Engineer", "Data Engineer", "Mobile App Developer (React Native/Flutter)", "System Architect / Tech Lead"]) {
+        for (const role of ["Full Stack Developer", "Frontend Engineer", "Backend Engineer", "DevOps / SRE Engineer", "Data Engineer", "Mobile App Developer (React Native/Flutter)", "System Architect / Tech Lead", "Machine Learning Engineer", "Security Engineer", "QA / Test Engineer", "Data Scientist", "Game Developer"]) {
             assert.ok(SUPPORTED_ROLES.includes(role), role);
         }
     });
