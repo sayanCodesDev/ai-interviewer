@@ -20,6 +20,15 @@ const PHASES = [
 
 type Phase = (typeof PHASES)[number]["name"];
 
+/** What the two sides are actually saying, so the loop reads as a real exchange, not just an animation. */
+const SCRIPT: Record<Phase, { role: "ai" | "user"; text: string }> = {
+    ask: { role: "ai", text: "Tell me about a time you had to speed up a slow API endpoint." },
+    answer: { role: "user", text: "I profiled it, found an N+1 query, and added a composite index." },
+    problem: { role: "ai", text: "Nice. Let's do a quick one: given an array, find two numbers that add to a target." },
+    code: { role: "user", text: "I'll track what I've seen in a hash map as I go, so it's one pass." },
+    run: { role: "ai", text: "That passed every test. Walk me through the time complexity." },
+};
+
 function useDemoPhase(active: boolean, frozen: boolean): Phase {
     const [index, setIndex] = useState(frozen ? 4 : 0);
 
@@ -148,9 +157,15 @@ export function ProductWindow({ className }: { className?: string }) {
                     className="grid min-h-0 min-w-0 gap-3 overflow-hidden transition-[grid-template-rows] duration-700 ease-out-expo"
                     style={{ gridTemplateRows: split ? "minmax(0,0.32fr) minmax(0,0.68fr)" : "minmax(0,1fr) minmax(0,0fr)" }}
                 >
-                    <div className="grid min-h-0 grid-cols-2 gap-3">
-                        <Tile kind="ai" label="Interviewer" level={aiLevel} compact={split} />
-                        <Tile kind="user" label="You" level={userLevel} initials="AL" compact={split} />
+                    <div className="grid min-h-0 grid-rows-[1fr_auto] gap-2">
+                        <div className="grid min-h-0 grid-cols-2 gap-3">
+                            <Tile kind="ai" label="Interviewer" level={aiLevel} compact={split} />
+                            <Tile kind="user" label="You" level={userLevel} initials="AL" compact={split} />
+                        </div>
+                        <p className="line-clamp-1 px-1 text-center text-[12.5px] leading-snug text-night-muted transition-opacity duration-300 sm:text-[13px]">
+                            <span className="label-mono mr-2 not-italic opacity-60">{SCRIPT[phase].role === "ai" ? "Interviewer" : "You"}</span>
+                            {SCRIPT[phase].text}
+                        </p>
                     </div>
                     <ProblemCard visible={split} />
                 </div>
