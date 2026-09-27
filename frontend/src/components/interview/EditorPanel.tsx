@@ -1,8 +1,9 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
 import { ArrowLeft, Check, Play, RotateCw, TriangleAlert, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import type { DesignCanvasHandle } from "@/components/interview/DesignCanvas";
 import { EditorSettings } from "@/components/interview/EditorSettings";
 import { ProblemPane } from "@/components/interview/ProblemPane";
 import { TestPanel } from "@/components/interview/TestPanel";
@@ -20,6 +21,9 @@ import "@/lib/monaco-setup";
 import { MONACO_THEME_NIGHT, MONACO_THEME_PAPER, defineInterviewerThemes } from "@/lib/monaco-theme";
 import { LANGUAGES, type Language, type PublicProblem, type TestRun } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+// Loaded only when a design round is actually reached: it's a full drawing library, and most interviews never open it.
+const DesignCanvas = lazy(() => import("@/components/interview/DesignCanvas").then((m) => ({ default: m.DesignCanvas })));
 
 const CONSOLE_MIN = 120;
 const CONSOLE_MAX = 520;
@@ -74,6 +78,7 @@ export function EditorPanel({ interviewId, mode, problem, title, prompt, problem
     const [code, setCode] = useState(() => loadDraft(draftKey(language)) ?? starter(language));
     const codeRef = useRef(code);
     codeRef.current = code;
+    const canvasRef = useRef<DesignCanvasHandle>(null);
 
     const [runResult, setRunResult] = useState<TestRun | null>(null);
     const [customResult, setCustomResult] = useState<TestRun | null>(null);
@@ -94,10 +99,13 @@ export function EditorPanel({ interviewId, mode, problem, title, prompt, problem
     const [loadState, setLoadState] = useState<"loading" | "ready" | "stuck">("loading");
     const [retryKey, setRetryKey] = useState(0);
     useEffect(() => {
+        // The design canvas isn't Monaco and doesn't go through onMount below, so it has none of the stale-CDN,
+        // stuck-loader failure modes that the timeout exists to catch.
+        if (notesMode) { setLoadState("ready"); return; }
         if (loadState !== "loading") return;
         const timer = setTimeout(() => setLoadState((state) => (state === "loading" ? "stuck" : state)), 12_000);
         return () => clearTimeout(timer);
-    }, [loadState, retryKey]);
+    }, [loadState, retryKey, notesMode]);
     const retryLoad = useCallback(() => {
         setLoadState("loading");
         setRetryKey((key) => key + 1);
@@ -185,9 +193,9 @@ export function EditorPanel({ interviewId, mode, problem, title, prompt, problem
 
     const submit = useCallback(() => {
         if (submitting) return;
-        const delivered = notesMode ? onSubmitNotes(codeRef.current) : onSubmitCode(codeRef.current, language);
+        const delivered = notesMode ? onSubmitNotes(canvasRef.current?.describeScene() ?? "(The candidate has not drawn anything yet.)") : onSubmitCode(codeRef.current, language);
         if (!delivered) toast.error("We couldn't reach your interviewer. Check your connection and try again.");
-        else if (notesMode) toast.success("Notes shared with your interviewer.");
+        else if (notesMode) toast.success("Board shared with your interviewer.");
     }, [submitting, notesMode, onSubmitNotes, onSubmitCode, language]);
 
     // Keyboard: Ctrl/Cmd+Enter runs, Ctrl/Cmd+Shift+Enter submits. Registered inside Monaco so it works while typing.
@@ -199,6 +207,16 @@ export function EditorPanel({ interviewId, mode, problem, title, prompt, problem
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => { if (!notesMode) void handlersRef.current.run(); });
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter, () => handlersRef.current.submit());
     };
+
+    // The design canvas isn't Monaco, so the shortcut above never registers for it: a plain window listener instead.
+    useEffect(() => {
+        if (!notesMode) return;
+        const onKeyDown = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "Enter") { e.preventDefault(); handlersRef.current.submit(); }
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [notesMode]);
 
     const languageInfo = LANGUAGES.find((l) => l.value === language)!;
     const editorLanguage = notesMode ? "markdown" : languageInfo.monaco;
@@ -234,7 +252,7 @@ export function EditorPanel({ interviewId, mode, problem, title, prompt, problem
 
             <div className="flex flex-wrap items-center gap-2.5 border-b border-night-line px-3 py-2.5 sm:px-4">
                 {notesMode ? (
-                    <span className="label-mono text-night-muted">Design notes</span>
+                    <span className="label-mono text-night-muted">Whiteboard</span>
                 ) : (
                     <Select value={language} onValueChange={(value) => handleLanguageChange(value as Language)}>
                         <SelectTrigger size="sm" aria-label="Language" className="w-[124px]">
@@ -255,7 +273,9 @@ export function EditorPanel({ interviewId, mode, problem, title, prompt, problem
                 </span>
 
                 <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-                    <EditorSettings prefs={prefs} onChange={updatePrefs} onResetCode={resetCode} />
+                    {/* Font size, minimap, tab width and "reset to starter" are code-editor settings with no
+                        meaning on a drawing canvas, and its own reset would be misleading wired to the old one. */}
+                    {!notesMode && <EditorSettings prefs={prefs} onChange={updatePrefs} onResetCode={resetCode} />}
                     {!notesMode && (
                         <Tooltip>
                             <TooltipTrigger asChild>
@@ -291,6 +311,11 @@ export function EditorPanel({ interviewId, mode, problem, title, prompt, problem
                         </Button>
                     </div>
                 )}
+                {notesMode ? (
+                    <Suspense fallback={<Skeleton className="m-4 h-6 w-1/2" />}>
+                        <DesignCanvas ref={canvasRef} draftKey={draftKey("excalidraw")} />
+                    </Suspense>
+                ) : (
                 <Editor
                     key={retryKey}
                     height="100%"
@@ -335,9 +360,10 @@ export function EditorPanel({ interviewId, mode, problem, title, prompt, problem
                         matchBrackets: "always",
                         renderWhitespace: "selection",
                         accessibilitySupport: "auto",
-                        ariaLabel: notesMode ? "Design notes" : "Code editor",
+                        ariaLabel: "Code editor",
                     }}
                 />
+                )}
             </div>
 
             {!notesMode && problem && (

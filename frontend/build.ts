@@ -69,6 +69,9 @@ const result = await Bun.build({
   minify: true,
   target: "browser",
   sourcemap: "linked",
+  // @excalidraw/excalidraw's package.json exports its stylesheet only behind "development"/"production"
+  // conditions, which Bun does not assume by default.
+  conditions: ["production"],
   // The lazy routes (landing, interview) become their own chunks, and absolute URLs
   // let every chunk and font resolve no matter which route the page was loaded from.
   splitting: true,
@@ -78,6 +81,9 @@ const result = await Bun.build({
     "import.meta.env.PROD": "true",
     "import.meta.env.DEV": "false",
     "import.meta.env.MODE": JSON.stringify("production"),
+    // A dependency (jotai, pulled in by @excalidraw/excalidraw) checks the bare `import.meta.env` object's
+    // truthiness rather than a specific property; without this Bun leaves the reference unresolved.
+    "import.meta.env": '{"PROD":true,"DEV":false,"MODE":"production"}',
     ...settingGlobals,
   },
 });
