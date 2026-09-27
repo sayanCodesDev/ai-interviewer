@@ -5,7 +5,7 @@ import { models } from "../llm/client";
 import { logger } from "../observability/logger";
 import { summariseGithub, type GithubProfile } from "./github";
 import { LEVEL_INDEX, type JdAnalysis } from "./plan";
-import { KNOWN_TAGS, type Level } from "./problems";
+import { KNOWN_TAGS, seededShuffle, type Level } from "./problems";
 import { BEHAVIORAL_BANK, GENERIC_BACKGROUND, getRoleBank, levelLabel, type BackgroundQuestion, type BankQuestion, type DesignPrompt } from "./roleBanks";
 import { extractSignals, type Signals } from "./signals";
 import { UNTRUSTED_NOTICE, sanitizeUntrusted, untrustedBlock } from "./untrusted";
@@ -16,6 +16,10 @@ export interface AnalysisInput {
     jobDescription?: string;
     resumeText?: string;
     github?: GithubProfile | null;
+    /** Breaks ties between equally relevant bank questions so two interviews for the same role and level do
+     * not open with the identical set every time. Falls back to the role and level, which is still better
+     * than a fixed order but repeats for the same candidate asking again with the same everything. */
+    seed?: string;
 }
 
 export interface BehavioralQuestion {
@@ -131,22 +135,27 @@ function questionRelevance(question: BankQuestion, corpus: Set<string>): number 
     return score;
 }
 
-function questionsForLevel(role: string, level: Level, corpus: Set<string> = new Set()): BankQuestion[] {
+function questionsForLevel(role: string, level: Level, corpus: Set<string> = new Set(), seed = `${role}:${level}`): BankQuestion[] {
     const bank = getRoleBank(role);
     const index = LEVEL_INDEX[level];
     const eligible = bank.technical.filter((question) => question.minLevel <= index);
+    // Shuffled first so that when relevance and level tie — the common case without a job description that
+    // singles anything out — which of the tied questions comes first still varies per interview, instead of
+    // always the order they happen to be written in the bank. Array.sort is stable, so this only ever
+    // changes the order WITHIN a tie: relevance and level still decide everything the seed doesn't.
+    const shuffled = seededShuffle(`${seed}:technical`, eligible);
     // What the job description and the candidate's own work mention first; then harder questions first for senior candidates, fundamentals first for juniors.
-    const ordered = [...eligible].sort((a, b) => questionRelevance(b, corpus) - questionRelevance(a, corpus) || (index >= 3 ? b.minLevel - a.minLevel : a.minLevel - b.minLevel));
+    const ordered = shuffled.sort((a, b) => questionRelevance(b, corpus) - questionRelevance(a, corpus) || (index >= 3 ? b.minLevel - a.minLevel : a.minLevel - b.minLevel));
     if (ordered.length >= MIN_QUESTIONS) return ordered;
 
     // A junior picking a leadership-heavy role still deserves a full interview: borrow the gentlest of the rest.
-    const rest = bank.technical.filter((question) => question.minLevel > index).sort((a, b) => a.minLevel - b.minLevel);
+    const rest = seededShuffle(`${seed}:rest`, bank.technical.filter((question) => question.minLevel > index)).sort((a, b) => a.minLevel - b.minLevel);
     return [...ordered, ...rest.slice(0, MIN_QUESTIONS - ordered.length)];
 }
 
-function behavioralForLevel(level: Level): BehavioralQuestion[] {
+function behavioralForLevel(level: Level, seed: string = level): BehavioralQuestion[] {
     const index = LEVEL_INDEX[level];
-    return BEHAVIORAL_BANK.filter((b) => b.minLevel <= index)
+    return seededShuffle(`${seed}:behavioral`, BEHAVIORAL_BANK.filter((b) => b.minLevel <= index))
         .sort((a, b) => (index >= 3 ? b.minLevel - a.minLevel : a.minLevel - b.minLevel))
         .map(({ topic, question, lookFor }) => ({ topic, question, lookFor }));
 }
@@ -182,9 +191,9 @@ export function fallbackAnalysis(input: AnalysisInput): Analysis {
             behavioralFocus: [],
         },
         signals: extractSignals({ role: input.role, jobDescription: input.jobDescription, resumeText: input.resumeText, github: input.github, roleTags: bank.codingTags }),
-        technical: questionsForLevel(input.role, input.level, corpusTokens(input)),
+        technical: questionsForLevel(input.role, input.level, corpusTokens(input), input.seed),
         background: [...githubBackground(input.github), ...GENERIC_BACKGROUND],
-        behavioral: behavioralForLevel(input.level),
+        behavioral: behavioralForLevel(input.level, input.seed),
         design: bank.design[0] ?? null,
     };
 }

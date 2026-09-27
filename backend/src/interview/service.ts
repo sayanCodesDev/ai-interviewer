@@ -126,6 +126,7 @@ export async function preparePlan(interviewId: string): Promise<void> {
             jobDescription,
             resumeText: row.resumeText ?? undefined,
             github,
+            seed: interviewId,
         });
         const plan = buildPlan({ role: row.targetRole, level: row.level as Level, format: row.format as Format, analysis, seed: interviewId });
 

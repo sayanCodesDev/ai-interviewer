@@ -29,6 +29,18 @@ describe("role banks", () => {
         }
     });
 
+    test("without a job description to break ties, which questions open the interview still varies by seed, not the bank's own order every time", () => {
+        // A short, generic job description gives every question the same (zero) relevance score, so without a
+        // seed to break the tie the bank's own written order would decide it, identically, for every candidate.
+        const jd = "We are hiring an engineer to join our team and help us build great software.";
+        const a = fallbackAnalysis({ role: "Backend Engineer", level: "mid", jobDescription: jd, seed: "interview-aaa" });
+        const b = fallbackAnalysis({ role: "Backend Engineer", level: "mid", jobDescription: jd, seed: "interview-bbb" });
+        assert.notDeepEqual(a.technical.map((q) => q.question), b.technical.map((q) => q.question), "two interviews for the same role and level open differently");
+        // Still deterministic for the same interview asked twice (a retried plan must not change what it already told the candidate).
+        const again = fallbackAnalysis({ role: "Backend Engineer", level: "mid", jobDescription: jd, seed: "interview-aaa" });
+        assert.deepEqual(a.technical.map((q) => q.question), again.technical.map((q) => q.question));
+    });
+
     test("the setup form's roles all have a bank", () => {
         for (const role of ["Full Stack Developer", "Frontend Engineer", "Backend Engineer", "DevOps / SRE Engineer", "Data Engineer", "Mobile App Developer (React Native/Flutter)", "System Architect / Tech Lead", "Machine Learning Engineer", "Security Engineer", "QA / Test Engineer", "Data Scientist", "Game Developer"]) {
             assert.ok(SUPPORTED_ROLES.includes(role), role);
