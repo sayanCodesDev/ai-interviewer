@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import { VoicePicker } from "@/components/setup/VoicePicker";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { AppLayout } from "@/layouts/AppLayout";
 import { apiErrorMessage, apiFieldErrors } from "@/lib/api";
@@ -303,40 +304,27 @@ export function Setup() {
                             </Field>
                         </div>
 
-                        <div className="grid gap-6 sm:grid-cols-2">
-                            <Field label="Interviewer voice" htmlFor="voice">
-                                {(control) => (
-                                    <Select value={voice} onValueChange={setVoice}>
-                                        <SelectTrigger {...control}>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {options.voices.map((v) => (
-                                                <SelectItem key={v.id} value={v.id}>
-                                                    {v.name} · {v.description}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                )}
-                            </Field>
-                            <Field label="Your accent" htmlFor="accent" hint="Helps us understand you accurately.">
-                                {(control) => (
-                                    <Select value={accent} onValueChange={setAccent}>
-                                        <SelectTrigger {...control}>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {options.accents.map((a) => (
-                                                <SelectItem key={a.id} value={a.id}>
-                                                    {a.label}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                )}
-                            </Field>
-                        </div>
+                        <fieldset className="grid gap-2">
+                            <legend className="text-sm font-medium">Interviewer voice</legend>
+                            <VoicePicker voices={options.voices} value={voice} onChange={setVoice} />
+                        </fieldset>
+
+                        <Field label="Your accent" htmlFor="accent" hint="Helps us understand you accurately." className="max-w-xs">
+                            {(control) => (
+                                <Select value={accent} onValueChange={setAccent}>
+                                    <SelectTrigger {...control}>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {options.accents.map((a) => (
+                                            <SelectItem key={a.id} value={a.id}>
+                                                {a.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        </Field>
 
                         <Button type="submit" variant="signal" size="lg" disabled={loading} className="group w-full sm:w-fit">
                             {loading ? <Spinner /> : null}

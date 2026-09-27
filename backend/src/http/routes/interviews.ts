@@ -105,6 +105,24 @@ export function interviewsRouter(limits: RateLimits): Router {
         res.send(audio);
     });
 
+    /** A spoken sample of any offered voice, so setup can be previewed while choosing, before an interview exists. */
+    router.get("/voices/:voiceId/sample", requireAuth, limits.voiceSample, async (req, res) => {
+        const voiceId = parseInput(z.enum(VOICES.map((v) => v.id) as [string, ...string[]], { error: "That isn't one of the offered voices." }), req.params.voiceId);
+        if (config.voiceMode !== "live" || !config.deepgramApiKey) {
+            throw new HttpError(503, "The voice preview isn't available on this server.", "voice_unavailable");
+        }
+        let audio: Buffer;
+        try {
+            audio = await voiceSample(voiceId);
+        } catch (error) {
+            logger.warn({ err: error }, "Could not make the voice sample");
+            throw new HttpError(503, "We couldn't play the sample just now. Try again in a moment.", "voice_unavailable");
+        }
+        res.setHeader("Content-Type", "audio/mpeg");
+        res.setHeader("Cache-Control", "public, max-age=86400"); // the same fixed sample text for everyone
+        res.send(audio);
+    });
+
     router.get("/interviews/:id", requireAuth, limits.reads, async (req, res) => {
         const id = parseInput(idSchema, req.params.id);
         const row = await getOwnedInterview(currentUser(req).id, id);
