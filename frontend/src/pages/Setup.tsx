@@ -19,13 +19,13 @@ import { cn } from "@/lib/utils";
 
 // Shown until the options load, and used if that request fails, so the form is never empty.
 const FALLBACK: InterviewOptions = {
-    roles: ["Full Stack Developer", "Frontend Engineer", "Backend Engineer", "DevOps / SRE Engineer", "Data Engineer", "Mobile App Developer (React Native/Flutter)", "System Architect / Tech Lead", "Machine Learning Engineer", "Security Engineer", "QA / Test Engineer", "Data Scientist", "Game Developer"],
+    roles: ["Full Stack Developer", "Frontend Engineer", "Backend Engineer", "DevOps / SRE Engineer", "Data Engineer", "Mobile App Developer (React Native/Flutter)", "System Architect / Tech Lead", "Machine Learning Engineer", "Security Engineer", "QA / Test Engineer", "Data Scientist", "Game Developer", "SDE 1", "SDE 2", "Forward Deployed Engineer"],
     levels: ["intern", "junior", "mid", "senior", "staff"],
     formats: [
-        { id: "quick", label: "Quick screen", minutes: 20, description: "A short phone-screen: introductions, your background and one coding problem." },
-        { id: "standard", label: "Standard loop", minutes: 45, description: "Background, two coding problems, technical questions from the job description, and behavioral." },
-        { id: "full", label: "Full loop", minutes: 75, description: "The standard loop plus a third coding problem and a system-design round." },
-        { id: "drill", label: "Coding drill", minutes: 30, description: "Only data structures and algorithms: four problems back to back." },
+        { id: "quick", label: "Quick screen", minutes: 20, description: "The shape of a recruiter or hiring-manager phone screen: introductions, your background, and one coding problem." },
+        { id: "standard", label: "Standard loop", minutes: 45, description: "The shape of a single onsite interviewer's slot: background, two coding problems, technical questions, and behavioral." },
+        { id: "full", label: "Full loop", minutes: 75, description: "The shape of a senior or final-round loop: the standard round plus a third coding problem and a system-design discussion." },
+        { id: "drill", label: "Coding drill", minutes: 30, description: "Not a real interview format: pure practice, four data-structures-and-algorithms problems back to back." },
     ],
     voices: [{ id: "aura-2-thalia-en", name: "Thalia", description: "Clear and confident" }],
     accents: [{ id: "en", label: "English (general)" }],

@@ -108,7 +108,7 @@ export const FORMAT_PRESETS: Record<Format, FormatPreset> = {
     quick: {
         label: "Quick screen",
         minutes: 20,
-        description: "A short phone-screen: introductions, your background, and one coding problem.",
+        description: "The shape of a recruiter or hiring-manager phone screen: introductions, your background, and one coding problem — a first filter, not a deep technical bar.",
         codingFollowUps: 2,
         rounds: [
             { type: "intro", minutes: 2, count: 1 },
@@ -120,7 +120,7 @@ export const FORMAT_PRESETS: Record<Format, FormatPreset> = {
     standard: {
         label: "Standard loop",
         minutes: 45,
-        description: "Introductions, background, two coding problems, technical questions from the job description, and behavioral.",
+        description: "The shape of a single onsite interviewer's slot: background, two coding problems, technical questions from the job description, and behavioral — one round of a real loop, not the whole day.",
         codingFollowUps: 2,
         rounds: [
             { type: "intro", minutes: 3, count: 1 },
@@ -134,7 +134,7 @@ export const FORMAT_PRESETS: Record<Format, FormatPreset> = {
     full: {
         label: "Full loop",
         minutes: 75,
-        description: "The standard loop plus a third coding problem and a system-design round.",
+        description: "The shape of a senior or final-round loop: the standard round plus a third coding problem and a system-design discussion, the way a bar-raiser or staff-level round runs.",
         codingFollowUps: 2,
         rounds: [
             { type: "intro", minutes: 3, count: 1 },
@@ -149,7 +149,7 @@ export const FORMAT_PRESETS: Record<Format, FormatPreset> = {
     drill: {
         label: "Coding drill",
         minutes: 30,
-        description: "Only data structures and algorithms: four problems back to back with a quick complexity question after each.",
+        description: "Not a real interview format: pure practice, the way a LeetCode grind session runs. Four data-structures-and-algorithms problems back to back, with a quick complexity question after each.",
         codingFollowUps: 1,
         rounds: [
             { type: "intro", minutes: 1, count: 1 },

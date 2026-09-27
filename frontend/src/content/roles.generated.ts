@@ -1348,6 +1348,349 @@ export const ROLE_CONTENT: RoleContent[] = [
                 "prompt": "Design how a large open-world game streams its world in and out of memory as the player moves through it."
             }
         ]
+    },
+    {
+        "slug": "sde-1",
+        "role": "SDE 1",
+        "summary": "An early-career software development engineer title used across big tech (Amazon, and similarly \"SWE I\" or \"L3\" elsewhere): a well-scoped ticket, correct and efficient code, and clear communication about what you did and why.",
+        "focusAreas": [
+            "Correctness on clearly-scoped problems",
+            "Core data structures and complexity",
+            "Debugging your own code out loud",
+            "Testing and edge cases",
+            "Taking ownership of a small, well-defined piece of work"
+        ],
+        "codingTopics": [
+            "array",
+            "string",
+            "hash-map",
+            "two-pointers",
+            "sliding-window",
+            "tree",
+            "stack"
+        ],
+        "sampleQuestions": [
+            {
+                "question": "Walk me through the difference between an array and a linked list, and when you'd reach for each.",
+                "skill": "Data structures",
+                "lookFor": [
+                    "Contiguous memory versus nodes and pointers",
+                    "O(1) index access versus O(n) traversal",
+                    "Insertion and deletion cost at each end and in the middle"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "What's the time complexity of the solution you just wrote, and could it be better?",
+                "skill": "Complexity analysis",
+                "lookFor": [
+                    "Correctly states Big O for time and space",
+                    "Identifies the dominant operation",
+                    "Can name a trade-off for a faster approach, even if they wouldn't implement it now"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "How would you find and fix a bug in a function that only fails for certain inputs?",
+                "skill": "Debugging",
+                "lookFor": [
+                    "Reproducing it with the smallest failing input",
+                    "Reading the actual error or stack trace, not guessing",
+                    "Adding print statements or a debugger, methodically",
+                    "Checking assumptions about the input"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "What edge cases would you test for a function that parses a date string?",
+                "skill": "Testing and edge cases",
+                "lookFor": [
+                    "Empty or malformed input",
+                    "Boundary values: leap years, month lengths",
+                    "Time zones or locale, if relevant",
+                    "What the function should do on bad input: throw, return null, or default"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "Explain the difference between a stack and a queue, and give a real example of when each is the right structure.",
+                "skill": "Data structures",
+                "lookFor": [
+                    "LIFO versus FIFO",
+                    "Concrete example for each (undo history, task queue, BFS)",
+                    "Which built-in structures back each one"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "What happens when you call a recursive function with no base case, and how do you avoid that bug?",
+                "skill": "Recursion",
+                "lookFor": [
+                    "Stack overflow from unbounded recursion",
+                    "Every recursive case must shrink toward a base case",
+                    "Tracing through a small example by hand"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "You're given a ticket with requirements that don't cover what should happen for an empty list. What do you do?",
+                "skill": "Ownership and communication",
+                "lookFor": [
+                    "Doesn't just guess silently",
+                    "Asks a clarifying question or states the assumption in the PR",
+                    "Picks a sensible default and explains why"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "What does a pull request review from a senior engineer usually look for, and how do you respond to comments you disagree with?",
+                "skill": "Code review",
+                "lookFor": [
+                    "Readability, correctness, tests, not just 'does it work'",
+                    "Responding with reasoning, not just complying or arguing",
+                    "Knowing when to push back versus defer"
+                ],
+                "level": "junior"
+            }
+        ],
+        "designPrompts": [
+            {
+                "title": "Command-line word counter",
+                "prompt": "Design a simple command-line tool that counts word frequency in a text file and prints the top ten most common words. Walk through the pieces you'd build, not just the code."
+            },
+            {
+                "title": "Library book tracker",
+                "prompt": "Design the classes for a simple system that tracks which books in a small library are checked out and by whom."
+            }
+        ]
+    },
+    {
+        "slug": "sde-2",
+        "role": "SDE 2",
+        "summary": "A mid-level software development engineer title used across big tech (Amazon, and similarly \"SWE II\" or \"L4\" elsewhere): owns a feature end to end, makes sound trade-offs without much guidance, and starts to think about the system a change lives in, not just the change itself.",
+        "focusAreas": [
+            "Harder algorithmic problems under time pressure",
+            "Small-scale system design and trade-offs",
+            "Debugging and operating a service in production",
+            "Mentoring and reviewing others' code",
+            "Ambiguity: scoping your own work from a rough ask"
+        ],
+        "codingTopics": [
+            "heap",
+            "graph",
+            "dynamic-programming",
+            "intervals",
+            "design",
+            "binary-search"
+        ],
+        "sampleQuestions": [
+            {
+                "question": "Design a rate limiter for an API. Walk through at least two algorithms and their trade-offs.",
+                "skill": "System design in miniature",
+                "lookFor": [
+                    "Token bucket versus sliding window",
+                    "Where the counters live for a service with many instances",
+                    "Behaviour at the boundary: reject, queue, or degrade"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "You own a service and its p99 latency doubles after a deploy last night. Walk me through how you'd find the cause.",
+                "skill": "Production debugging",
+                "lookFor": [
+                    "Correlating the timing with the deploy, not just symptoms",
+                    "Metrics, logs and traces, in that rough order",
+                    "Common culprits: a new N+1 query, a lock, a downstream dependency",
+                    "Mitigate (rollback, feature flag) before fully root-causing"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "How would you design a system to detect duplicate payment requests and avoid charging a customer twice?",
+                "skill": "Idempotency and correctness",
+                "lookFor": [
+                    "Idempotency keys and where they're stored",
+                    "Race between two near-simultaneous requests",
+                    "What 'exactly once' really means in practice"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "Two teams need to change the same shared service. How do you keep an API backward compatible while it evolves?",
+                "skill": "API evolution",
+                "lookFor": [
+                    "Additive changes versus breaking changes",
+                    "Versioning strategies and deprecation windows",
+                    "Contract tests, and communicating changes to consumers"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "A junior engineer's pull request works but has a subtle design problem that will cause trouble in six months. How do you review it?",
+                "skill": "Mentoring and code review",
+                "lookFor": [
+                    "Explains the 'why', not just 'change this'",
+                    "Distinguishes a blocking issue from a style preference",
+                    "Balances teaching against just shipping the fix themselves"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "Design a cache in front of a database read path. What do you cache, and how do you keep it from serving stale data?",
+                "skill": "Caching",
+                "lookFor": [
+                    "Cache-aside versus write-through",
+                    "Invalidation strategy and TTL choice",
+                    "Thundering herd on a cold cache or mass expiry"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "You're asked to 'make search faster' with no other detail. How do you turn that into actual work?",
+                "skill": "Scoping ambiguity",
+                "lookFor": [
+                    "Asking what 'faster' means and for whom, with numbers",
+                    "Measuring the current baseline before proposing anything",
+                    "Breaking it into a small first step with a way to know it worked"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "Explain optimistic versus pessimistic locking for a resource two people might edit at once, and when you'd use each.",
+                "skill": "Concurrency",
+                "lookFor": [
+                    "Pessimistic: lock up front, safe but blocks",
+                    "Optimistic: version check on write, better throughput, needs a retry path",
+                    "Which fits high-contention versus low-contention cases"
+                ],
+                "level": "mid"
+            }
+        ],
+        "designPrompts": [
+            {
+                "title": "URL shortener with analytics",
+                "prompt": "Design a URL shortening service that also tracks click analytics per link, expecting significant read traffic."
+            },
+            {
+                "title": "Distributed job scheduler",
+                "prompt": "Design a system that lets other services schedule a job to run once, at a specific future time, reliably even if a worker crashes."
+            }
+        ]
+    },
+    {
+        "slug": "forward-deployed-engineer",
+        "role": "Forward Deployed Engineer",
+        "summary": "For candidates who build and ship software embedded with a customer: turning a messy, half-specified real-world problem into a working tool fast, often against data and systems you don't control.",
+        "focusAreas": [
+            "Rapid prototyping under ambiguity",
+            "Working with messy, undocumented real-world data",
+            "Full-stack breadth over deep specialisation",
+            "Communicating with non-technical stakeholders",
+            "Shipping something usable fast, then iterating"
+        ],
+        "codingTopics": [
+            "hash-map",
+            "string",
+            "array",
+            "sorting",
+            "graph"
+        ],
+        "sampleQuestions": [
+            {
+                "question": "You're handed a CSV export from a client with inconsistent formatting, missing fields and duplicate rows. How do you turn it into something usable?",
+                "skill": "Data cleaning",
+                "lookFor": [
+                    "Profiling the data before writing any code",
+                    "Handling missing and malformed values explicitly, not silently dropping them",
+                    "Deduplication strategy and what counts as a duplicate",
+                    "Keeping a record of what was changed and why"
+                ],
+                "level": "intern"
+            },
+            {
+                "question": "A client says their process is 'basically like Excel but for scheduling'. How do you turn that into a first working prototype this week?",
+                "skill": "Rapid prototyping",
+                "lookFor": [
+                    "Asking a handful of concrete questions instead of guessing everything",
+                    "Cutting scope to the smallest useful version",
+                    "Being upfront about what the first version won't do",
+                    "A plan to get it in front of the client fast for feedback"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "You need to pull data from a client's internal system that has no real API, just a legacy database and some scheduled file exports. How do you approach integration?",
+                "skill": "Systems integration",
+                "lookFor": [
+                    "Working with what actually exists rather than waiting for an ideal API",
+                    "Read-only access first, and being careful with a system you don't own",
+                    "Handling schema drift or exports that silently change format",
+                    "Fallback if the integration breaks"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "How would you explain a technical limitation to a client stakeholder who isn't technical and is frustrated that something 'simple' is taking a week?",
+                "skill": "Communication",
+                "lookFor": [
+                    "Translates the technical issue into terms about their outcome, not jargon",
+                    "Honest without being alarmist",
+                    "Offers options or a workaround where possible"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "Walk me through how you'd design a lightweight ETL pipeline that ingests daily files from a client and loads them into a database you control.",
+                "skill": "Data pipelines",
+                "lookFor": [
+                    "Extract, validate, transform, load, with failure at each stage handled",
+                    "Idempotent reruns if a load fails partway",
+                    "Alerting when the data looks wrong, not just when the job crashes",
+                    "Schema evolution as the client's data changes"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "You've shipped a prototype the client loves, but it's held together with scripts and manual steps. How do you decide what to harden first before it becomes a real dependency?",
+                "skill": "From prototype to production",
+                "lookFor": [
+                    "Identifying what breaks the client's workflow if it fails silently",
+                    "Prioritising reliability over polish",
+                    "Bringing in tests and monitoring incrementally rather than a full rewrite"
+                ],
+                "level": "mid"
+            },
+            {
+                "question": "Two features are both 'urgent' according to two different people at the client. How do you figure out what to build first?",
+                "skill": "Prioritisation under ambiguity",
+                "lookFor": [
+                    "Going back to actual business impact, not just who asked loudest",
+                    "Making the trade-off explicit to both stakeholders",
+                    "Willing to make a call rather than stall on consensus"
+                ],
+                "level": "junior"
+            },
+            {
+                "question": "How do you validate that a data transformation you wrote is actually correct when you don't have a spec to check it against, only the client's word?",
+                "skill": "Data validation",
+                "lookFor": [
+                    "Spot-checking against known real examples",
+                    "Building small validation checks into the pipeline itself",
+                    "Getting the client to confirm on a sample before trusting it at scale"
+                ],
+                "level": "mid"
+            }
+        ],
+        "designPrompts": [
+            {
+                "title": "Client onboarding data pipeline",
+                "prompt": "A new client wants to onboard onto your platform. They'll send you a mix of CSV files and access to a legacy SQL database, and the data quality is unknown. Design the pipeline that gets their data in, cleaned, and usable."
+            },
+            {
+                "title": "Internal tool for a non-technical team",
+                "prompt": "A client's operations team currently tracks a critical process in a shared spreadsheet that keeps breaking. Design a minimal internal tool to replace it, given that they need it working within two weeks."
+            }
+        ]
     }
 ];
 
@@ -1356,25 +1699,25 @@ export const FORMAT_CONTENT = [
         "id": "quick",
         "label": "Quick screen",
         "minutes": 20,
-        "description": "A short phone-screen: introductions, your background, and one coding problem."
+        "description": "The shape of a recruiter or hiring-manager phone screen: introductions, your background, and one coding problem — a first filter, not a deep technical bar."
     },
     {
         "id": "standard",
         "label": "Standard loop",
         "minutes": 45,
-        "description": "Introductions, background, two coding problems, technical questions from the job description, and behavioral."
+        "description": "The shape of a single onsite interviewer's slot: background, two coding problems, technical questions from the job description, and behavioral — one round of a real loop, not the whole day."
     },
     {
         "id": "full",
         "label": "Full loop",
         "minutes": 75,
-        "description": "The standard loop plus a third coding problem and a system-design round."
+        "description": "The shape of a senior or final-round loop: the standard round plus a third coding problem and a system-design discussion, the way a bar-raiser or staff-level round runs."
     },
     {
         "id": "drill",
         "label": "Coding drill",
         "minutes": 30,
-        "description": "Only data structures and algorithms: four problems back to back with a quick complexity question after each."
+        "description": "Not a real interview format: pure practice, the way a LeetCode grind session runs. Four data-structures-and-algorithms problems back to back, with a quick complexity question after each."
     }
 ] as const;
 
@@ -1410,5 +1753,5 @@ export const PRODUCT_STATS = {
         "C++",
         "Java"
     ],
-    "roles": 12
+    "roles": 15
 } as const;
