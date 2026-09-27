@@ -1,5 +1,5 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
-import { ArrowLeft, Check, Play, X } from "lucide-react";
+import { ArrowLeft, Check, Play, RotateCw, TriangleAlert, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -86,6 +86,22 @@ export function EditorPanel({ interviewId, mode, problem, title, prompt, problem
     const [showProblem, setShowProblem] = useState(layout === "sheet");
     const drag = useRef<{ startY: number; startHeight: number } | null>(null);
     const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+    // Monaco loads its own runtime from our origin after this component mounts (see monaco-setup.ts). If
+    // that ever stalls — a network hiccup, a blocking extension, a stale cache — `onMount` below never
+    // fires and `<Editor>`'s own `loading` fallback would sit there forever with no way out. Give it a
+    // window, then offer a real retry instead of a silent stuck skeleton.
+    const [loadState, setLoadState] = useState<"loading" | "ready" | "stuck">("loading");
+    const [retryKey, setRetryKey] = useState(0);
+    useEffect(() => {
+        if (loadState !== "loading") return;
+        const timer = setTimeout(() => setLoadState((state) => (state === "loading" ? "stuck" : state)), 12_000);
+        return () => clearTimeout(timer);
+    }, [loadState, retryKey]);
+    const retryLoad = useCallback(() => {
+        setLoadState("loading");
+        setRetryKey((key) => key + 1);
+    }, []);
 
     // Per-problem timer: neutral, then amber at 15 minutes and red at 25.
     useEffect(() => {
@@ -178,6 +194,7 @@ export function EditorPanel({ interviewId, mode, problem, title, prompt, problem
     const handlersRef = useRef({ run: runExamples, submit });
     handlersRef.current = { run: runExamples, submit };
     const onMount: OnMount = (editor, monaco) => {
+        setLoadState("ready");
         void document.fonts.ready.then(() => monaco.editor.remeasureFonts());
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => { if (!notesMode) void handlersRef.current.run(); });
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter, () => handlersRef.current.submit());
@@ -263,8 +280,19 @@ export function EditorPanel({ interviewId, mode, problem, title, prompt, problem
                 </div>
             </div>
 
-            <div className="min-h-[160px] flex-1">
+            <div className="relative min-h-[160px] flex-1">
+                {loadState === "stuck" && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-night-sunken px-6 text-center">
+                        <TriangleAlert className="size-5 text-night-amber" aria-hidden="true" />
+                        <p className="text-[14px] text-night-foreground">The code editor is taking too long to load.</p>
+                        <p className="max-w-xs text-[13px] text-night-muted">This is usually a slow or interrupted connection. Your answer isn't lost — you can keep talking, or try again.</p>
+                        <Button variant="outline" size="sm" onClick={retryLoad}>
+                            <RotateCw /> Retry
+                        </Button>
+                    </div>
+                )}
                 <Editor
+                    key={retryKey}
                     height="100%"
                     language={editorLanguage}
                     path={`${interviewId}/${problem?.key ?? "notes"}.${language}`}

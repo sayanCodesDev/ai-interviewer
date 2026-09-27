@@ -39,6 +39,11 @@ const settingGlobals: Record<string, string> = {};
 for (const key of ["VITE_BACKEND_URL", "VITE_SITE_URL", "VITE_CONTACT_EMAIL"]) {
   settingGlobals[`__${key}__`] = envVars[`import.meta.env.${key}`]!;
 }
+
+// The installed monaco-editor version, so its files can be served from a versioned, cache-forever path
+// (see monaco-setup.ts and the /monaco/* rule below).
+const monacoVersion: string = JSON.parse(await Bun.file(path.join(process.cwd(), "node_modules", "monaco-editor", "package.json")).text()).version;
+settingGlobals.__MONACO_VERSION__ = JSON.stringify(monacoVersion);
 const isSet = (key: string) => JSON.parse(envVars[`import.meta.env.${key}`] ?? '""') !== "";
 
 if (!isSet("VITE_BACKEND_URL")) {
@@ -89,11 +94,12 @@ try {
   // No public folder — that's fine
 }
 
-// The code editor is served from our own origin. Copy its runtime (loader, workers, languages) next to the app.
+// The code editor is served from our own origin, at a path stamped with its version (see monaco-setup.ts):
+// copy its runtime (loader, workers, languages) next to the app.
 const monacoSource = path.join(process.cwd(), "node_modules", "monaco-editor", "min", "vs");
 try {
-  await cp(monacoSource, path.join(outdir, "monaco", "vs"), { recursive: true });
-  console.log(" Copied monaco-editor runtime to dist/monaco/vs");
+  await cp(monacoSource, path.join(outdir, "monaco", monacoVersion, "vs"), { recursive: true });
+  console.log(` Copied monaco-editor ${monacoVersion} runtime to dist/monaco/${monacoVersion}/vs`);
 } catch {
   console.warn("⚠️  Could not copy monaco-editor. Run `bun install` so the code editor works in this build.");
 }
