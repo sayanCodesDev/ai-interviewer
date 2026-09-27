@@ -174,7 +174,8 @@ const LADDERS: Record<Level, Difficulty[]> = {
 
 const SINGLE_PROBLEM_DIFFICULTY: Record<Level, Difficulty> = { intern: "easy", junior: "medium", mid: "medium", senior: "medium", staff: "hard" };
 
-function seededShuffle<T>(seed: string, items: T[]): T[] {
+/** A shuffle that is the same for the same seed and the same items, and different for a different seed. */
+export function seededShuffle<T>(seed: string, items: T[]): T[] {
     let h = 2166136261;
     for (const ch of seed) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
     const next = () => {
