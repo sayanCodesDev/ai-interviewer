@@ -67,9 +67,12 @@ export function buildHeaders(input: HeaderInput): string {
     immutable,
     "/font-*",
     immutable,
-    // The editor's files are not content-hashed, so let them be revalidated after a week.
+    // The path is stamped with the monaco-editor version (see monaco-setup.ts), so an upgrade is a new URL
+    // and this can be cached forever like the hashed chunks above, instead of the week-long compromise a
+    // stable path would need — which could otherwise serve a returning visitor a stale loader.js after a
+    // monaco-editor upgrade, one that asks the new deploy for chunk files that no longer exist.
     "/monaco/*",
-    "  Cache-Control: public, max-age=604800",
+    immutable,
     "/og.png",
     "  Cache-Control: public, max-age=86400",
     "",
