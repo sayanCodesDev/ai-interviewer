@@ -1,21 +1,58 @@
 import tailwind from "bun-plugin-tailwind";
 import { rm, cp, readdir } from "node:fs/promises";
 import path from "node:path";
+import { buildHeaders, buildNginxHeaders, inlineScriptHashes } from "./headers";
 
 const outdir = path.join(process.cwd(), "dist");
 await rm(outdir, { recursive: true, force: true });
 
-// Read env variables from .env for injection
+// Read VITE_* variables for injection. `.env.production` is loaded last so it
+// wins for a production bundle, while `.env` keeps holding the local dev values.
 const envVars: Record<string, string> = {};
-const envFile = Bun.file(path.join(process.cwd(), ".env"));
-if (await envFile.exists()) {
+for (const envFileName of [".env", ".env.production"]) {
+  const envFile = Bun.file(path.join(process.cwd(), envFileName));
+  if (!(await envFile.exists())) continue;
+
   const envText = await envFile.text();
   for (const line of envText.split("\n")) {
-    const match = line.match(/^(VITE_[^=]+)=(.*)$/);
+    const match = line.match(/^\s*(VITE_[^=\s]+)\s*=\s*(.*)$/);
     if (match && match[1] && match[2] !== undefined) {
-      envVars[`import.meta.env.${match[1]}`] = JSON.stringify(match[2].trim());
+      // Strip surrounding quotes and any trailing `#` comment.
+      const value = match[2].replace(/\s+#.*$/, "").trim().replace(/^["'](.*)["']$/, "$1");
+      envVars[`import.meta.env.${match[1]}`] = JSON.stringify(value);
     }
   }
+}
+
+// Variables set in the shell win over the files, e.g. `VITE_BACKEND_URL=http://localhost:2000 bun run build` for a local test of the production build.
+for (const [key, value] of Object.entries(process.env)) {
+  if (key.startsWith("VITE_") && value !== undefined) envVars[`import.meta.env.${key}`] = JSON.stringify(value);
+}
+
+// Every variable the app reads is always defined. If one were left undefined, `import.meta.env.VITE_X` would be
+// evaluated in the browser, where `import.meta.env` doesn't exist, and throw. An empty string means "not set".
+for (const key of ["VITE_BACKEND_URL", "VITE_SITE_URL", "VITE_CONTACT_EMAIL"]) {
+  envVars[`import.meta.env.${key}`] ??= JSON.stringify("");
+}
+// The app reads these as bare globals (src/globals.d.ts), which the bundler replaces with the values.
+const settingGlobals: Record<string, string> = {};
+for (const key of ["VITE_BACKEND_URL", "VITE_SITE_URL", "VITE_CONTACT_EMAIL"]) {
+  settingGlobals[`__${key}__`] = envVars[`import.meta.env.${key}`]!;
+}
+const isSet = (key: string) => JSON.parse(envVars[`import.meta.env.${key}`] ?? '""') !== "";
+
+if (!isSet("VITE_BACKEND_URL")) {
+  console.warn(
+    "⚠️  VITE_BACKEND_URL is not set in frontend/.env.production — the bundle will " +
+    "fall back to http://localhost:2000, which will not work once deployed."
+  );
+}
+
+if (!isSet("VITE_SITE_URL")) {
+  console.warn(
+    "⚠️  VITE_SITE_URL is not set in frontend/.env.production — canonical URLs, the sitemap and " +
+    "social previews will point at https://ai-interviewer.example.com instead of your domain."
+  );
 }
 
 const entrypoints = [...new Bun.Glob("src/**/*.html").scanSync()];
@@ -27,12 +64,16 @@ const result = await Bun.build({
   minify: true,
   target: "browser",
   sourcemap: "linked",
+  // The lazy routes (landing, interview) become their own chunks, and absolute URLs
+  // let every chunk and font resolve no matter which route the page was loaded from.
+  splitting: true,
+  publicPath: "/",
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
     "import.meta.env.PROD": "true",
     "import.meta.env.DEV": "false",
     "import.meta.env.MODE": JSON.stringify("production"),
-    ...envVars,
+    ...settingGlobals,
   },
 });
 
@@ -47,6 +88,66 @@ try {
 } catch {
   // No public folder — that's fine
 }
+
+// The code editor is served from our own origin. Copy its runtime (loader, workers, languages) next to the app.
+const monacoSource = path.join(process.cwd(), "node_modules", "monaco-editor", "min", "vs");
+try {
+  await cp(monacoSource, path.join(outdir, "monaco", "vs"), { recursive: true });
+  console.log(" Copied monaco-editor runtime to dist/monaco/vs");
+} catch {
+  console.warn("⚠️  Could not copy monaco-editor. Run `bun install` so the code editor works in this build.");
+}
+
+// A stable URL for the logo (the bundled copy has a hashed name).
+await cp(path.join(process.cwd(), "src", "favicon.svg"), path.join(outdir, "favicon.svg"));
+
+// `import.meta.env` doesn't exist in a browser. If any of it survived into the bundle, that code reads
+// `undefined` (or throws) there, and a setting like the API address silently falls back to its default.
+{
+  const leftovers: string[] = [];
+  for (const output of result.outputs.filter((o) => o.path.endsWith(".js"))) {
+    const text = await output.text();
+    for (const match of text.matchAll(/import\.meta\.env/g)) leftovers.push(`${path.basename(output.path)}: ...${text.slice(Math.max(0, match.index! - 40), match.index! + 60).replace(/\s+/g, " ")}...`);
+  }
+  if (leftovers.length > 0) {
+    console.error("The bundle still contains `import.meta.env`, which does not exist in a browser:\n  " + leftovers.slice(0, 5).join("\n  "));
+    process.exit(1);
+  }
+}
+
+if (!result.success) {
+  for (const log of result.logs) console.error(log);
+  process.exit(1);
+}
+
+// Bun inlines the font files into the stylesheet as base64, which made the stylesheet (render-blocking) 200 KB.
+// Move each one back out to a file the browser can cache and fetch in parallel with the CSS.
+const preloadFonts: string[] = [];
+for (const output of result.outputs.filter((o) => o.path.endsWith(".css"))) {
+  let css = await output.text();
+  const pattern = /@font-face\{([^}]*?)url\(data:font\/woff2;base64,([A-Za-z0-9+/=]+)\)/g;
+  css = css.replace(pattern, (whole, before: string, base64: string) => {
+    const bytes = Buffer.from(base64, "base64");
+    const name = `font-${Bun.hash(bytes).toString(36)}.woff2`;
+    Bun.write(path.join(outdir, name), bytes);
+    // Only the faces used above the fold are worth preloading.
+    if (/font-family:(Geist Variable|Instrument Serif);font-style:normal/.test(before)) preloadFonts.push(`/${name}`);
+    return `@font-face{${before}url(/${name})`;
+  });
+  await Bun.write(output.path, css);
+}
+
+// Turn the public pages into real HTML files for crawlers and first paint. The site URL and contact
+// address are read from the environment at run time by the pages themselves.
+for (const [name, value] of Object.entries(settingGlobals)) (globalThis as Record<string, unknown>)[name] = JSON.parse(value);
+const { prerenderSite } = await import("./prerender");
+await prerenderSite({ outdir, fontFiles: preloadFonts });
+
+const backendUrl = JSON.parse(envVars["import.meta.env.VITE_BACKEND_URL"] ?? '"http://localhost:2000"') || "http://localhost:2000";
+const headerInput = { backendUrl, scriptHashes: inlineScriptHashes(await Bun.file(path.join(outdir, "app.html")).text()) };
+await Bun.write(path.join(outdir, "_headers"), buildHeaders(headerInput));
+// The same headers for nginx (used by frontend/Dockerfile). Not served publicly: nginx.conf includes it from /etc/nginx.
+await Bun.write(path.join(outdir, "nginx-headers.conf"), buildNginxHeaders(headerInput));
 
 for (const output of result.outputs) {
   console.log(` ${path.relative(process.cwd(), output.path)}  ${(output.size / 1024).toFixed(1)} KB`);

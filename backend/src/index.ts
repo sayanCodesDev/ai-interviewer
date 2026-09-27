@@ -1,258 +1,60 @@
-import "dotenv/config";
-import express from "express";
-import type { Request, Response, NextFunction } from "express";
-import { UrlsValidate } from "./validate";
-import cors from "cors";
-import { GithubScrape } from "./GithubScrape";
-import { setInterviewContext, resetConversation } from "./services/llm";
-import Router from "./serverWebrtc";
-import cookieParser from "cookie-parser";
-import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
-import { prisma } from "../lib/prisma";
+import { config } from "./config/env";
+import { checkSchema, schemaHelp } from "./db/schema";
+import { startMaintenance, stopMaintenance } from "./maintenance";
+import { createApp } from "./http/app";
+import { accountRouter } from "./http/routes/account";
+import { interviewsRouter } from "./http/routes/interviews";
+import { webrtcRouter } from "./http/routes/webrtc";
+import { verifyModels } from "./llm/client";
+import { startLoopBlocker } from "./voice/faults";
+import { logger } from "./observability/logger";
+import { drainLive } from "./webrtc/registry";
+import { describeRunner } from "./runner";
+import { startReportWorker, stopReportWorker } from "./scoring/worker";
 
-const app = express();
-
-const JWT_SECRET = process.env.JWT_SECRET || "ai-interviewer-secret-key-12345";
-
-app.use(express.json());
-app.use(cookieParser());
-
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(",").map(o => o.trim())
-    : ["http://localhost:3000", "http://localhost:5173", "http://localhost:4173", "http://127.0.0.1:3000"];
-
-app.use(cors({
-    origin: allowedOrigins,
-    credentials: true
-}));
-
-app.use(Router);
-
-// Extends Request interface to include user
-interface AuthenticatedRequest extends Request {
-    user?: {
-        id: string;
-        email: string;
-        name?: string | null;
-    };
+// Refuse to run against a database that is missing migrations. Otherwise the first sign-in fails with
+// "The table public.RefreshSession does not exist" instead of telling anyone what to do.
+try {
+    const schema = await checkSchema();
+    if (schema.skipped) logger.warn("Migration files are not deployed with the server, so the database schema could not be checked");
+    else if (!schema.ok) {
+        logger.fatal({ missing: schema.missing }, schemaHelp(schema.missing));
+        process.exit(1);
+    }
+} catch (error) {
+    logger.fatal({ err: error }, "Could not reach the database. Check DATABASE_URL and that the database is running.");
+    process.exit(1);
 }
 
-// Authentication Middleware
-export const authMiddleware = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
-    const authHeader = req.headers.authorization;
-    const bearerToken = authHeader && authHeader.startsWith("Bearer ") ? authHeader.substring(7) : null;
-    const token = req.cookies.token || bearerToken;
+const app = createApp({ apiRouters: [accountRouter, interviewsRouter, webrtcRouter] });
 
-    if (!token) {
-        res.status(401).json({ msg: "No token, authorization denied" });
-        return;
-    }
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string; name?: string | null };
-        req.user = decoded;
-        next();
-    } catch (err) {
-        res.status(401).json({ msg: "Token is not valid" });
-    }
-};
-
-// Auth Routes
-app.post("/api/auth/signup", async (req: Request, res: Response): Promise<void> => {
-    try {
-        const { email, password, name } = req.body;
-        if (!email || !password) {
-            res.status(400).json({ msg: "Please enter all fields" });
-            return;
-        }
-
-        const existingUser = await prisma.user.findUnique({ where: { email } });
-        if (existingUser) {
-            res.status(400).json({ msg: "User already exists" });
-            return;
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = await prisma.user.create({
-            data: {
-                email,
-                password: hashedPassword,
-                name
-            }
-        });
-
-        const token = jwt.sign({ id: newUser.id, email: newUser.email, name: newUser.name }, JWT_SECRET, { expiresIn: "7d" });
-
-        const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
-        res.cookie("token", token, {
-            httpOnly: true,
-            secure: isHttps,
-            sameSite: isHttps ? "none" : "lax",
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-        });
-
-        res.status(201).json({
-            msg: "User registered successfully",
-            userId: newUser.id,
-            email: newUser.email,
-            name: newUser.name,
-            token
-        });
-    } catch (error) {
-        console.error("Signup error:", error);
-        res.status(500).json({ msg: "Server error" });
-    }
+const server = app.listen(config.port, () => {
+    logger.info({ port: config.port, env: config.nodeEnv }, "Server started");
+    // Surface a bad model name or a missing sandbox now, not as a silent interviewer mid-call.
+    void verifyModels();
+    void describeRunner().then((runner) => {
+        if (runner.ok) logger.info({ runner: runner.kind }, "Code runner ready");
+        else logger.error({ runner: runner.kind, reason: runner.reason }, "Code runner unavailable: running code will fail");
+    });
 });
 
-app.post("/api/auth/signin", async (req: Request, res: Response): Promise<void> => {
-    try {
-        const { email, password } = req.body;
-        if (!email || !password) {
-            res.status(400).json({ msg: "Please enter all fields" });
-            return;
-        }
+startReportWorker();
+startLoopBlocker(); // test-only: does nothing unless AUDIO_TEST_BLOCK_MS is set outside production
 
-        const user = await prisma.user.findUnique({ where: { email } });
-        if (!user) {
-            res.status(400).json({ msg: "Invalid credentials" });
-            return;
-        }
+// Housekeeping: expired sessions, orphaned interviews, data past its retention period.
+startMaintenance();
 
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            res.status(400).json({ msg: "Invalid credentials" });
-            return;
-        }
-
-        const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: "7d" });
-
-        const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
-        res.cookie("token", token, {
-            httpOnly: true,
-            secure: isHttps,
-            sameSite: isHttps ? "none" : "lax",
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-        });
-
-        res.json({
-            msg: "Signed in successfully",
-            userId: user.id,
-            email: user.email,
-            name: user.name,
-            token
-        });
-    } catch (error) {
-        console.error("Signin error:", error);
-        res.status(500).json({ msg: "Server error" });
-    }
-});
-
-app.post("/api/auth/logout", (req: Request, res: Response) => {
-    res.clearCookie("token");
-    res.json({ msg: "Logged out successfully" });
-});
-
-app.get("/api/auth/me", authMiddleware as any, (req: AuthenticatedRequest, res: Response) => {
-    res.json({ user: req.user });
-});
-
-app.post("/api/pre-interview", authMiddleware as any, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    const validate = UrlsValidate.safeParse(req.body);
-    if (!validate.success) {
-        res.status(411).json({ msg: "Invalid request parameters", errors: validate.error.issues });
-        return;
-    }
-
-    const { githubUrl, targetRole } = validate.data;
-
-    // Extract github username if present
-    const githubUrlUsername = githubUrl
-        ? (githubUrl.endsWith("/") ? githubUrl.split("/").slice(0, -1).pop() : githubUrl.split("/").pop())
-        : undefined;
-
-    // Reset conversation history for fresh session
-    resetConversation();
-
-    let githubRepos: any[] = [];
-    if (githubUrlUsername) {
-        try {
-            console.log(`[Pre-Interview] Scraping GitHub for @${githubUrlUsername}...`);
-            githubRepos = await GithubScrape(githubUrlUsername);
-        } catch (err: any) {
-            console.error("[Pre-Interview] GitHub scrape failed:", err.message);
-        }
-    }
-
-    // Set interview context (Target Role + GitHub)
-    setInterviewContext(targetRole, githubUrlUsername, githubRepos);
-
-    res.json({ githubUrlUsername, targetRole });
-});
-
-
-app.post("/api/execute-code", async (req: Request, res: Response): Promise<void> => {
-    try {
-        const { code, language } = req.body;
-        if (!code) {
-            res.status(400).json({ output: "Error: No code provided." });
-            return;
-        }
-
-        const langKey = (language || "javascript").toLowerCase();
-
-        if (langKey === "javascript" || langKey === "typescript") {
-            let logs: string[] = [];
-            const originalLog = console.log;
-            const originalError = console.error;
-            
-            try {
-                console.log = (...args) => {
-                    logs.push(args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
-                };
-                console.error = (...args) => {
-                    logs.push("[ERROR] " + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
-                };
-
-                const fn = new Function(code);
-                const result = fn();
-                
-                console.log = originalLog;
-                console.error = originalError;
-
-                let outputText = logs.join("\n");
-                if (result !== undefined && !logs.includes(String(result))) {
-                    outputText += (outputText ? "\nReturn Value: " : "Return Value: ") + JSON.stringify(result);
-                }
-
-                res.json({ output: outputText || "Code executed successfully (no console output)." });
-            } catch (err: any) {
-                console.log = originalLog;
-                console.error = originalError;
-                res.json({ output: `Runtime Error: ${err.message}` });
-            }
-        } else if (langKey === "python") {
-            const { exec } = await import("child_process");
-            const fs = await import("fs");
-            const path = await import("path");
-            const tmpFile = path.join(process.cwd(), `tmp_${Date.now()}.py`);
-            
-            fs.writeFileSync(tmpFile, code);
-            exec(`python3 "${tmpFile}"`, { timeout: 5000 }, (error, stdout, stderr) => {
-                try { fs.unlinkSync(tmpFile); } catch (e) {}
-                if (error) {
-                    res.json({ output: stderr || error.message });
-                } else {
-                    res.json({ output: stdout || "Python code executed successfully (no output)." });
-                }
-            });
-        } else {
-            res.json({ output: `[${langKey.toUpperCase()} Syntax & Logic Check]\nStatus: Clean syntax, solution structured properly!` });
-        }
-    } catch (err: any) {
-        res.status(500).json({ output: `Execution Exception: ${err.message}` });
-    }
-});
-
-app.listen(2000, () => {
-    console.log("Server started on port 2000")
-})
+let shuttingDown = false;
+async function shutdown(signal: string) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info({ signal }, "Shutting down: no new calls, letting live interviews finish");
+    // New HTTP requests are refused by closing the listener; running calls (WebRTC) keep going for a while.
+    server.close();
+    stopReportWorker();
+    stopMaintenance();
+    await drainLive(Number(process.env.SHUTDOWN_GRACE_MS) || 60_000);
+    process.exit(0);
+}
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
