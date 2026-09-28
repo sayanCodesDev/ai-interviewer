@@ -1,6 +1,7 @@
 import tailwind from "bun-plugin-tailwind";
 import { rm, cp, readdir } from "node:fs/promises";
 import path from "node:path";
+import { fixEs6PromisePoolInterop } from "./build-plugins/fixEs6PromisePoolInterop";
 import { buildHeaders, buildNginxHeaders, inlineScriptHashes } from "./headers";
 
 const outdir = path.join(process.cwd(), "dist");
@@ -65,7 +66,7 @@ const entrypoints = [...new Bun.Glob("src/**/*.html").scanSync()];
 const result = await Bun.build({
   entrypoints,
   outdir,
-  plugins: [tailwind],
+  plugins: [tailwind, fixEs6PromisePoolInterop],
   minify: true,
   target: "browser",
   sourcemap: "linked",
