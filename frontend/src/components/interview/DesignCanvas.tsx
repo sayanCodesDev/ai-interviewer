@@ -65,7 +65,11 @@ export const DesignCanvas = forwardRef<DesignCanvasHandle, DesignCanvasProps>(fu
         <div className="h-full w-full overflow-hidden rounded-lg border border-night-line [&_.excalidraw]:h-full">
             <Excalidraw
                 excalidrawAPI={(a) => { api.current = a; }}
-                initialData={{ elements: initialElements, appState: { theme: "dark", viewBackgroundColor: "#1a1a17" } }}
+                // `theme="dark"` only styles Excalidraw's own panels; it does not change the default colour it
+                // gives new shapes, which stays its light-mode "#1e1e1e" regardless. Left alone, that's a nearly
+                // invisible dark stroke on our dark canvas — the candidate draws boxes they can barely see. Both
+                // colours below are the app's own night palette, so a fresh board reads clearly from the first line.
+                initialData={{ elements: initialElements, appState: { theme: "dark", viewBackgroundColor: "#1a1a17", currentItemStrokeColor: "#f2f0ea" } }}
                 onChange={handleChange}
                 theme="dark"
                 UIOptions={{ canvasActions: { saveToActiveFile: false, loadScene: false, export: false, toggleTheme: false } }}

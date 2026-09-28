@@ -134,10 +134,14 @@ await cp(path.join(process.cwd(), "src", "favicon.svg"), path.join(outdir, "favi
 // The design-round whiteboard's stylesheet, served as a static file for the same reason Monaco is above:
 // its package export is gated behind non-standard conditions that, if satisfied via Bun.build's own
 // `conditions` option, changed which chunk Bun treated as the app's entry script. See DesignCanvas.tsx.
+// Its one @font-face rule references "./fonts/Assistant/..." relative to the stylesheet's own URL, so that
+// folder has to travel with it or the toolbar silently falls back to the browser's default font.
 try {
-  await cp(path.join(process.cwd(), "node_modules", "@excalidraw", "excalidraw", "dist", "prod", "index.css"), path.join(outdir, "excalidraw", "index.css"));
+  const excalidrawProd = path.join(process.cwd(), "node_modules", "@excalidraw", "excalidraw", "dist", "prod");
+  await cp(path.join(excalidrawProd, "index.css"), path.join(outdir, "excalidraw", "index.css"));
+  await cp(path.join(excalidrawProd, "fonts", "Assistant"), path.join(outdir, "excalidraw", "fonts", "Assistant"), { recursive: true });
 } catch {
-  console.warn("⚠️  Could not copy the Excalidraw stylesheet. Run `bun install` so the design-round whiteboard is styled.");
+  console.warn("⚠️  Could not copy Excalidraw's stylesheet and font. Run `bun install` so the design-round whiteboard is styled.");
 }
 
 // `import.meta.env` doesn't exist in a browser. If any of it survived into the bundle, that code reads

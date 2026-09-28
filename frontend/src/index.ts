@@ -6,16 +6,26 @@ import index from "./index.html";
 // copies the same files into dist/monaco for static hosting.
 const MONACO_ROOT = join(import.meta.dir, "..", "node_modules", "monaco-editor", "min");
 
+// The design-round whiteboard's stylesheet (see DesignCanvas.tsx and build.ts) needs the same static
+// serving in dev, or the whiteboard opens with no CSS at all: an unstyled, unusably laid-out toolbar.
+const EXCALIDRAW_ROOT = join(import.meta.dir, "..", "node_modules", "@excalidraw", "excalidraw", "dist", "prod");
+
+function staticAssetRoute(root: string) {
+  return async (req: Request) => {
+    const prefix = new URL(req.url).pathname.split("/")[1]!;
+    const relative = decodeURIComponent(new URL(req.url).pathname.slice(prefix.length + 2));
+    const file = normalize(join(root, relative));
+    // Never serve anything outside the asset's own folder.
+    if (!file.startsWith(root)) return new Response("Not found", { status: 404 });
+    const asset = Bun.file(file);
+    return (await asset.exists()) ? new Response(asset) : new Response("Not found", { status: 404 });
+  };
+}
+
 const server = serve({
   routes: {
-    "/monaco/*": async (req) => {
-      const relative = decodeURIComponent(new URL(req.url).pathname.slice("/monaco/".length));
-      const file = normalize(join(MONACO_ROOT, relative));
-      // Never serve anything outside the editor's own folder.
-      if (!file.startsWith(MONACO_ROOT)) return new Response("Not found", { status: 404 });
-      const asset = Bun.file(file);
-      return (await asset.exists()) ? new Response(asset) : new Response("Not found", { status: 404 });
-    },
+    "/monaco/*": staticAssetRoute(MONACO_ROOT),
+    "/excalidraw/*": staticAssetRoute(EXCALIDRAW_ROOT),
 
     // Serve index.html for all unmatched routes.
     "/*": index,
