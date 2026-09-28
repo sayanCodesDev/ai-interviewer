@@ -62,7 +62,7 @@ export type CreateInterviewInput = z.infer<typeof createInterviewSchema>;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Creates the interview row and starts planning in the background. The candidate can go straight to the lobby. */
-export async function createInterview(userId: string, input: CreateInterviewInput, resumeText?: string): Promise<{ id: string }> {
+export async function createInterview(userId: string, input: CreateInterviewInput, resumeText?: string): Promise<{ id: string; githubVerified: boolean }> {
     if (config.maxInterviewsPerDay > 0) {
         const recent = await prisma.interview.count({ where: { userId, createdAt: { gte: new Date(Date.now() - DAY_MS) } } });
         if (recent >= config.maxInterviewsPerDay) {
@@ -72,8 +72,11 @@ export async function createInterview(userId: string, input: CreateInterviewInpu
 
     const githubUsername = parseGithubInput(input.githubUrl);
     if (!githubUsername) throw new HttpError(400, "That doesn't look like a GitHub username or profile link.", "invalid_github", { githubUrl: "Use a link like https://github.com/your-username." });
-    // A typo here would quietly cost the candidate the questions about their own projects. If GitHub can't be asked, don't block them.
-    if ((await verifyGithubUser(githubUsername)) === "missing") {
+    // A typo here would quietly cost the candidate the questions about their own projects. If GitHub can't be asked, don't block them —
+    // but "couldn't ask" (rate-limited, a network hiccup) is still worth telling them about, so they know why their real
+    // projects didn't come up, rather than wondering silently. githubVerified carries that back to the caller.
+    const check = await verifyGithubUser(githubUsername);
+    if (check === "missing") {
         throw new HttpError(400, `We couldn't find a GitHub account called ${githubUsername}.`, "github_not_found", { githubUrl: `There is no GitHub account called ${githubUsername}. Check the spelling.` });
     }
 
@@ -96,7 +99,7 @@ export async function createInterview(userId: string, input: CreateInterviewInpu
     });
 
     void preparePlan(created.id);
-    return created;
+    return { id: created.id, githubVerified: check === "found" };
 }
 
 // ------------------------------------------------------------------------------------- continuing

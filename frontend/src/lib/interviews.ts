@@ -5,8 +5,8 @@ export async function fetchOptions(): Promise<InterviewOptions> {
     return (await api.get<InterviewOptions>("/api/interview-options")).data;
 }
 
-export async function createInterview(form: FormData): Promise<{ id: string }> {
-    return (await api.post<{ id: string }>("/api/interviews", form)).data;
+export async function createInterview(form: FormData): Promise<{ id: string; githubVerified: boolean }> {
+    return (await api.post<{ id: string; githubVerified: boolean }>("/api/interviews", form)).data;
 }
 
 export async function fetchInterview(id: string): Promise<InterviewMeta> {

@@ -112,15 +112,17 @@ describe("creating an interview", () => {
         // A bare username works too, and is stored as the username alone.
         const bare = await client.post("/api/interviews", { ...SETUP, githubUrl: "torvalds" });
         assert.equal(bare.status, 201);
+        assert.equal(bare.body.githubVerified, true, "a confirmed account is reported as verified");
         const stored = await prisma.interview.findUniqueOrThrow({ where: { id: bare.body.id } });
         assert.equal(stored.githubUsername, "torvalds");
     });
 
-    test("when GitHub itself cannot be asked, a candidate is not blocked from starting", async () => {
+    test("when GitHub itself cannot be asked, a candidate is not blocked from starting, but is told it could not be verified", async () => {
         githubDown = true;
         const client = await signedIn("a@example.com");
         const res = await client.post("/api/interviews", SETUP);
         assert.equal(res.status, 201);
+        assert.equal(res.body.githubVerified, false, "so the setup page can warn instead of staying silent about it");
     });
 
     test("creates the interview and prepares a plan in the background", async () => {

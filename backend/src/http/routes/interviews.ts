@@ -81,8 +81,8 @@ export function interviewsRouter(limits: RateLimits): Router {
             }
         }
 
-        const { id } = await createInterview(user.id, input, resumeText);
-        res.status(201).json({ id });
+        const { id, githubVerified } = await createInterview(user.id, input, resumeText);
+        res.status(201).json({ id, githubVerified });
     });
 
     /** "Practice this": a retry seeded from a finished report's study plan, in the same track as its source. */

@@ -160,7 +160,12 @@ export function Setup() {
 
         setLoading(true);
         try {
-            const { id } = await createInterview(form);
+            const { id, githubVerified } = await createInterview(form);
+            // A GitHub account that's confirmed not to exist already blocks setup with a toast (below, via
+            // the server's 400). This is the other case: GitHub couldn't be asked at all (rate-limited, a
+            // network hiccup) — not blocked, since that would lock candidates out over our own inability to
+            // check, but worth saying, or the missing project-specific questions look like a silent bug.
+            if (!githubVerified) toast.warning("We couldn't verify your GitHub account just now, so this interview won't ask about your specific projects. Continuing anyway.");
             navigate(`/lobby/${id}`);
         } catch (error) {
             const fields = apiFieldErrors(error);
