@@ -33,6 +33,16 @@ const FALLBACK: InterviewOptions = {
 
 const LEVEL_LABEL: Record<Level, string> = { intern: "Intern", junior: "Junior", mid: "Mid-level", senior: "Senior", staff: "Staff+" };
 
+/**
+ * The formats aren't equally realistic at every level: "Full loop" describes itself as a senior or
+ * final-round loop, so defaulting to it for a senior or staff candidate — instead of leaving everyone on
+ * the same "Standard loop" default — actually matches the format they're most likely to be practising for.
+ * Intern through mid keep today's "Standard loop" default; nothing changes for them.
+ */
+function defaultFormatForLevel(level: Level): Format {
+    return level === "senior" || level === "staff" ? "full" : "standard";
+}
+
 /** What each format contains, in order. Mirrors the interview engine's presets. */
 const FORMAT_ROUNDS: Record<Format, Array<{ title: string; minutes: number; note?: string }>> = {
     quick: [{ title: "Introduction", minutes: 2 }, { title: "Background and projects", minutes: 3 }, { title: "Coding", minutes: 12, note: "1 problem" }, { title: "Wrap-up", minutes: 3 }],
@@ -78,6 +88,19 @@ export function Setup() {
     const [role, setRole] = useState(FALLBACK.roles[0]!);
     const [level, setLevel] = useState<Level>("mid");
     const [format, setFormat] = useState<Format>("standard");
+    // Once the candidate has picked a format themselves, the level no longer overrides it — this only
+    // steers the *default*, it never fights a deliberate choice.
+    const formatTouched = useRef(false);
+
+    function handleLevelChange(next: Level) {
+        setLevel(next);
+        if (!formatTouched.current) setFormat(defaultFormatForLevel(next));
+    }
+
+    function handleFormatChange(next: Format) {
+        formatTouched.current = true;
+        setFormat(next);
+    }
     const [jobDescription, setJobDescription] = useState("");
     const [responsibilities, setResponsibilities] = useState("");
     const [githubUrl, setGithubUrl] = useState("");
@@ -192,7 +215,7 @@ export function Setup() {
                                                 level === l ? "border-foreground bg-foreground text-background" : "bg-card text-muted-foreground",
                                             )}
                                         >
-                                            <input type="radio" name="level" value={l} checked={level === l} onChange={() => setLevel(l)} className="sr-only" />
+                                            <input type="radio" name="level" value={l} checked={level === l} onChange={() => handleLevelChange(l)} className="sr-only" />
                                             {LEVEL_LABEL[l]}
                                         </label>
                                     ))}
@@ -204,7 +227,7 @@ export function Setup() {
                             <legend className="text-sm font-medium">Format</legend>
                             <div role="radiogroup" className="grid gap-2.5 sm:grid-cols-2">
                                 {options.formats.map((f) => (
-                                    <RadioCard key={f.id} name="format" value={f.id} checked={format === f.id} onChange={() => setFormat(f.id)} title={f.label} meta={`${f.minutes} min`} description={f.description} />
+                                    <RadioCard key={f.id} name="format" value={f.id} checked={format === f.id} onChange={() => handleFormatChange(f.id)} title={f.label} meta={`${f.minutes} min`} description={f.description} />
                                 ))}
                             </div>
                         </fieldset>
