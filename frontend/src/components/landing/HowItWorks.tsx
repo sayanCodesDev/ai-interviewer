@@ -19,7 +19,7 @@ const STEPS = [
     },
     {
         title: "Code",
-        text: "For each problem an editor opens beside the conversation. Run your code on the examples, submit it against hidden tests, then talk through the complexity.",
+        text: "For each problem a full editor opens beside the conversation. Run your code on the examples, submit it against hidden tests, then talk through the complexity. Reach a system-design round and it becomes a real whiteboard instead — boxes and arrows, not typed notes.",
         Scene: CodeScene,
     },
     {

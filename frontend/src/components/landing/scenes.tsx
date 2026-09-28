@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Workflow } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Tile } from "@/components/audio/Tile";
@@ -60,13 +60,17 @@ export function CodeScene() {
 
     return (
         <div className="grid h-full gap-3 p-3 md:grid-cols-[0.42fr_1fr]">
-            <div className="hidden min-h-0 grid-rows-[auto_1fr] gap-3 md:grid">
+            <div className="hidden min-h-0 grid-rows-[auto_1fr_auto] gap-3 md:grid">
                 <div className="grid grid-cols-2 gap-3">
                     <Tile kind="ai" label="AI" level={silent} compact />
                     <Tile kind="user" label="You" level={silent} initials="AL" compact />
                 </div>
                 <div className="min-h-0 overflow-hidden">
                     <ProblemCard visible />
+                </div>
+                <div className="flex items-center gap-2.5 rounded-xl border border-night-line bg-night-raised px-3.5 py-3 text-[12.5px] leading-snug text-night-muted">
+                    <Workflow className="size-4 shrink-0 text-night-foreground/70" />
+                    <span>For a system-design round, this becomes a whiteboard — boxes and arrows.</span>
                 </div>
             </div>
             <div className="min-h-0">
