@@ -7,7 +7,7 @@ import { streamReply } from "./dialogue";
 import type { ServerEvent } from "./events";
 import { fallbackAnalysis } from "./jdAnalysis";
 import { buildPlan } from "./planBuilder";
-import type { Format } from "./plan";
+import type { Format, InterviewPlan, TalkItem } from "./plan";
 import { getProblemDef, type TestRun } from "./problems";
 import { personaPrompt } from "./prompts";
 
@@ -22,14 +22,12 @@ interface Rig {
     speak(turn: Turn | null, reply?: (turn: Turn) => string): Promise<void>;
 }
 
-function makeRig(format: Format = "quick", level: "junior" | "mid" | "senior" = "mid"): Rig {
-    const role = "Backend Engineer";
-    const plan = buildPlan({ role, level, format, analysis: fallbackAnalysis({ role, level }), seed: "rig" });
+function buildRig(plan: InterviewPlan): Rig {
     const clock = { now: 1_000_000 };
     const rounds: string[] = [];
     const conductor = new Conductor({
         plan,
-        systemPrompt: personaPrompt({ interviewerName: "Thalia", role, level, candidateName: "Sam" }),
+        systemPrompt: personaPrompt({ interviewerName: "Thalia", role: plan.role, level: plan.level, candidateName: "Sam" }),
         candidateName: "Sam",
         now: () => clock.now,
         onRoundComplete: (round) => rounds.push(round.key),
@@ -72,6 +70,39 @@ function makeRig(format: Format = "quick", level: "junior" | "mid" | "senior" = 
             }
         },
     };
+}
+
+function makeRig(format: Format = "quick", level: "junior" | "mid" | "senior" = "mid"): Rig {
+    const role = "Backend Engineer";
+    const plan = buildPlan({ role, level, format, analysis: fallbackAnalysis({ role, level }), seed: "rig" });
+    return buildRig(plan);
+}
+
+/**
+ * Intro, one background question (about the candidate's own project), then the design round — a hand-picked
+ * three rounds instead of the full loop's whole sequence, so a test can reach either one quickly. The design
+ * round is a real one, pulled from an actual "full" plan, not hand-written.
+ */
+function makeShortRig(): Rig {
+    const role = "Backend Engineer";
+    const level = "mid" as const;
+    const base = buildPlan({ role, level, format: "full", analysis: fallbackAnalysis({ role, level }), seed: "rig-short" });
+    const designRound = base.rounds.find((r) => r.type === "system_design")!;
+    const introItem: TalkItem = { kind: "talk", id: "intro-0", topic: "Introduction", prompt: "Tell me briefly about yourself.", lookFor: [], followUps: [], maxProbes: 0 };
+    const backgroundItem: TalkItem = {
+        kind: "talk", id: "bg-0", topic: "Project architecture",
+        prompt: "Walk me through the architecture of your AI Interviewer project, focusing on how you integrated Deepgram and Groq.",
+        lookFor: ["A clear picture of the main components", "How the pieces talk to each other"], followUps: [], maxProbes: 1,
+    };
+    const plan: InterviewPlan = {
+        ...base,
+        rounds: [
+            { key: "1-intro", type: "intro", title: "Introduction", budgetMinutes: 2, items: [introItem] },
+            { key: "2-background", type: "background", title: "Background and projects", budgetMinutes: 5, items: [backgroundItem] },
+            designRound,
+        ],
+    };
+    return buildRig(plan);
 }
 
 const PASSING: TestRun = { status: "PASSED", passed: 5, total: 5, cases: [], runtimeMs: 3 };
@@ -611,9 +642,18 @@ describe("Conductor: moving on only when it is right", () => {
         const event = rig.conductor.editorEvent() as any;
         assert.equal(event.type, "SHOW_CODE_EDITOR");
         assert.equal(event.problem.key, problemKey(rig));
+    });
+
+    test("a talk question opens no editor on its own, but a sketch pad is there for the topic if the candidate asks for it", async () => {
         const talk = makeRig("quick");
         await talk.speak(talk.conductor.begin());
-        assert.equal(talk.conductor.editorEvent(), null);
+        assert.ok(!talk.turns.some((t) => t.events.some((e) => e.type === "SHOW_CODE_EDITOR") || t.eventsAfter.some((e) => e.type === "SHOW_CODE_EDITOR")), "never opened automatically for a talk question");
+        assert.equal(talk.conductor.editorEvent(), null, "and a reconnect would not pop one open either, since nothing was asked for");
+
+        const event = talk.conductor.requestEditor() as any;
+        assert.equal(event.type, "SHOW_CODE_EDITOR");
+        assert.equal(event.mode, "notes");
+        assert.equal(event.title, "Introduction");
     });
 
     test("a candidate who starts talking before the new question is out does not lose it: the interviewer is told, and carries on or asks it again", async () => {
@@ -679,6 +719,65 @@ describe("Conductor: moving on only when it is right", () => {
         const turn = rig.conductor.onCandidate(SUBSTANTIAL)!;
         rig.conductor.finishTurn(turn, { text: "Got it, thanks for that.", markers: [], interrupted: false, firstSentenceMs: 1 });
         assert.equal(rig.conductor.lastInterviewerAskedQuestion, false);
+    });
+});
+
+describe("Conductor: a sketch pad on any topic, not only system design", () => {
+    test("never opens itself for a talk question, but is there, titled after the question, if asked for", async () => {
+        const rig = makeShortRig();
+        await rig.speak(rig.conductor.begin()); // intro
+        await rig.speak(rig.conductor.onCandidate(SUBSTANTIAL)); // into the background question
+        assert.equal(rig.conductor.position.round, "2-background");
+        assert.ok(!rig.turns.some((t) => t.events.some((e) => e.type === "SHOW_CODE_EDITOR") || t.eventsAfter.some((e) => e.type === "SHOW_CODE_EDITOR")), "never opened on its own");
+        assert.equal(rig.conductor.editorEvent(), null, "nothing to restore on a reconnect either, since nothing was asked for yet");
+
+        const event = rig.conductor.requestEditor() as any;
+        assert.equal(event.type, "SHOW_CODE_EDITOR");
+        assert.equal(event.mode, "notes");
+        assert.equal(event.title, "Project architecture");
+        assert.equal(rig.conductor.editorEvent()?.type, "SHOW_CODE_EDITOR", "now a reconnect would restore it, since it really is open");
+    });
+
+    test("sharing a sketch mid-answer is treated like a substantive answer, and the interviewer can still move on", async () => {
+        const rig = makeShortRig();
+        await rig.speak(rig.conductor.begin());
+        await rig.speak(rig.conductor.onCandidate(SUBSTANTIAL));
+        assert.equal(rig.conductor.position.round, "2-background");
+        const at = rig.conductor.position.item;
+
+        const turn = rig.conductor.onNotes("Boxes: Browser -> API -> Groq (LLM) and API -> Deepgram (STT/TTS), with arrows for the two calls.")!;
+        assert.equal(turn.kind, "respond");
+        assert.match(turn.directive, /shared a drawing/);
+        assert.match(turn.directive, /Groq/);
+        assert.deepEqual([...turn.allowedMarkers], ["ADVANCE"]);
+
+        const outcome = rig.conductor.finishTurn(turn, await streamReply(new FakeLlm("Nice, clear separation of the two APIs. [[ADVANCE]]"), rig.conductor.buildMessages(turn), { maxTokens: 100 }));
+        assert.equal(outcome.transition, true, "the interviewer may still move on from a sketched answer");
+        const moved = rig.conductor.commitTransition();
+        assert.equal(moved.next?.kind, "design_ask", "moved on to the design round next");
+        assert.notEqual(rig.conductor.position.item, at);
+    });
+
+    test("a sketch shared outside a talk or design step (e.g. while coding) is not accepted", async () => {
+        const rig = makeRig("quick");
+        await toFirstProblem(rig);
+        assert.equal(rig.conductor.onNotes("some notes"), null);
+    });
+
+    test("the design round still works exactly as before: notes are read back on every later reply, and the pad opens on its own", async () => {
+        const rig = makeShortRig();
+        await rig.speak(rig.conductor.begin());
+        // Intro, then the background question's initial answer and its one allowed follow-up, to clear it fully.
+        for (let i = 0; i < 3 && rig.conductor.position.step !== "design"; i++) {
+            await rig.speak(rig.conductor.onCandidate(SUBSTANTIAL));
+        }
+        assert.equal(rig.conductor.position.step, "design");
+        assert.ok(rig.turns.some((t) => t.eventsAfter.some((e) => e.type === "SHOW_CODE_EDITOR" && (e as any).mode === "notes")), "opens on its own, unlike a talk question's pad");
+
+        const turn = rig.conductor.onNotes("Load balancer -> app servers -> shared cache -> primary DB with a read replica.")!;
+        assert.equal(turn.kind, "design_respond");
+        assert.match(turn.directive, /Their notes so far/);
+        assert.match(turn.directive, /read replica/);
     });
 });
 

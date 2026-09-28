@@ -118,6 +118,23 @@ export const directives = {
         );
     },
 
+    /** They opened a sketch pad themselves mid-question (see Conductor.editorEvent) and just shared what they drew,
+     * instead of or alongside speaking — e.g. sketching their own project's architecture for a background question. */
+    talkNotesRespond: (view: TalkView & { notes: string }) => {
+        const canProbe = view.probesUsed < view.maxProbes;
+        return lines(
+            `CURRENT STEP: ${view.roundTitle}, question ${view.number} of ${view.total} (${view.topic}). You asked: "${view.prompt}" — they opened the sketch pad themselves and have just shared a drawing instead of, or alongside, speaking.`,
+            untrustedBlock("what the candidate drew, described as text", view.notes),
+            view.lookFor.length > 0 && `A strong answer covers:\n${bullets(view.lookFor)}`,
+            "React in one or two sentences to what they've drawn, referring to something specific in it.",
+            canProbe
+                ? "Then EITHER ask ONE targeted follow-up about something the sketch doesn't cover, OR, if it's already thorough, end your reply with [[ADVANCE]]."
+                : "You may not ask any more follow-ups on this question. Acknowledge it and end your reply with [[ADVANCE]].",
+            "Never ask two questions. Never say the marker aloud.",
+            view.time,
+        );
+    },
+
     candidateQuestions: (view: { probesUsed: number; maxProbes: number; time: string }) =>
         lines(
             `CURRENT STEP: The candidate is asking you questions at the end. Exchanges so far: ${view.probesUsed} of ${view.maxProbes}.`,

@@ -339,9 +339,9 @@ export class LiveInterview {
                 break;
             case "REQUEST_EDITOR": {
                 // Not stirring: opening the panel yourself is not speech, and must not interrupt or cancel a pending move.
-                const event = this.conductor.editorEvent();
+                const event = this.conductor.requestEditor();
                 if (event) this.send(event);
-                else this.sendNotice("info", "There's nothing to open right now — we're not on a coding or design part.");
+                else this.sendNotice("info", "There's nothing to open right now.");
                 break;
             }
             case "CLIENT_STATS":

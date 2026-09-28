@@ -165,14 +165,16 @@ describe("LiveInterview", () => {
         assert.equal(candidate[candidate.length - 1].text, "I would use a hash map.");
     });
 
-    test("asking to open the editor during a talk round is answered honestly: there is nothing to open", async () => {
+    test("asking to open the editor during an ordinary talk question opens a sketch pad for it, titled after the question", async () => {
         const { connect, live } = await setup();
         const voice = await connect();
         const stopsBefore = voice.stops;
         voice.handlers.onClientMessage(JSON.stringify({ type: "REQUEST_EDITOR" }));
         await live.idle();
-        assert.equal(voice.of("SHOW_CODE_EDITOR").length, 0);
-        assert.equal(voice.of("NOTICE").pop().level, "info");
+        const shown = voice.of("SHOW_CODE_EDITOR").pop();
+        assert.equal(shown.mode, "notes");
+        assert.ok(shown.title, "titled after the current question, not left blank");
+        assert.equal(voice.of("NOTICE").length, 0, "nothing to apologise for: there was something to open");
         assert.equal(voice.stops, stopsBefore, "asking for the editor is not treated as interrupting the interviewer");
     });
 });

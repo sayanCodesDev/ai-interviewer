@@ -151,6 +151,8 @@ export class Conductor {
     private lastProblemResult: { key: string; outcome: ProblemOutcome } | null = null;
     /** What was last seen in the editor, for the problem that is open. */
     private editorSnapshot: { problemKey: string; language: string; code: string } | null = null;
+    /** Whether the candidate has opened a sketch pad for the current talk item (see requestEditor()). Reset each new item. */
+    private talkPadOpen = false;
     private closing = false;
     private lastCandidateWords = 0;
     private lastCandidateText = "";
@@ -286,7 +288,10 @@ export class Conductor {
         return { language: snapshot.language, text, truncated: snapshot.code.length > CODE_ON_SCREEN_CHARS };
     }
 
-    /** The event that puts the current coding problem or design pad on screen, if one is open. */
+    /** The event that puts the current coding problem or design pad on screen, plus a talk item's sketch pad, but
+     * only once the candidate has actually asked for one (see requestEditor()) — reconnecting must restore exactly
+     * what was already open, not pop open a pad nobody asked for just because the current question happens to be
+     * one where a sketch would make sense. */
     editorEvent(): ServerEvent | null {
         if (this.closing) return null;
         const item = this.item;
@@ -299,7 +304,18 @@ export class Conductor {
         if (this.step.t === "design" && item.kind === "design") {
             return { type: "SHOW_CODE_EDITOR", mode: "notes", problemNumber: 1, problemTotal: 1, title: item.title, question: item.prompt, language: "markdown" };
         }
+        if (this.step.t === "talk" && item.kind === "talk" && this.talkPadOpen) {
+            return { type: "SHOW_CODE_EDITOR", mode: "notes", problemNumber: 1, problemTotal: 1, title: item.topic, question: item.prompt, language: "markdown" };
+        }
         return null;
+    }
+
+    /** The candidate opening the editor themselves (see live.ts's REQUEST_EDITOR): unlike editorEvent(), this may
+     * open a sketch pad that was not already open, for a talk item, e.g. to sketch out a background or technical
+     * answer. The pad closes again, like any other, once this item is left (see advance() and beginClosing()). */
+    requestEditor(): ServerEvent | null {
+        if (this.step.t === "talk") this.talkPadOpen = true;
+        return this.editorEvent();
     }
 
     // -------------------------------------------------------------------------------- transcript
@@ -450,15 +466,33 @@ export class Conductor {
         }), [], [], 260);
     }
 
-    /** The candidate shared their design notes. */
+    /** The candidate shared their design notes, or — during an ordinary talk question — a sketch they drew to
+     * illustrate what they're describing (their own idea, opened on request; see editorEvent()). */
     onNotes(text: string): Turn | null {
         const step = this.step;
-        if (this.ended || this.closing || step.t !== "design") return null;
-        this.pendingMove = null;
-        step.notes = sanitizeUntrusted(text, 3_000);
-        this.record("candidate", `[Shared design notes: ${step.notes.slice(0, 1_500)}]`);
-        const d = this.item as DesignItem;
-        return this.turn("design_respond", directives.designRespond({ ...d, probesUsed: step.probes, notes: step.notes, time: this.time }), [], ["ADVANCE"]);
+        if (this.ended || this.closing) return null;
+        if (step.t === "design") {
+            this.pendingMove = null;
+            step.notes = sanitizeUntrusted(text, 3_000);
+            this.record("candidate", `[Shared design notes: ${step.notes.slice(0, 1_500)}]`);
+            const d = this.item as DesignItem;
+            return this.turn("design_respond", directives.designRespond({ ...d, probesUsed: step.probes, notes: step.notes, time: this.time }), [], ["ADVANCE"]);
+        }
+        if (step.t === "talk") {
+            this.pendingMove = null;
+            // Notes arriving at all means the pad must be open on their screen, whatever led here: make sure
+            // it is closed like any other, once this item is left.
+            this.talkPadOpen = true;
+            const notes = sanitizeUntrusted(text, 3_000);
+            this.record("candidate", `[Shared a sketch: ${notes.slice(0, 1_500)}]`);
+            // Treated as a substantive answer for the same "have they said enough to move on" bookkeeping a
+            // spoken answer goes through — turn.kind stays "respond", so finishTurn()'s existing talk-step
+            // handling (ADVANCE, probe counting) applies unchanged; only the directive's wording differs.
+            this.lastCandidateWords = BRIEF_ANSWER_WORDS;
+            const item = this.item as TalkItem;
+            return this.turn("respond", directives.talkNotesRespond({ ...this.talkView(item, step.probes), notes }), [], ["ADVANCE"]);
+        }
+        return null;
     }
 
     // ----------------------------------------------------------------------------------- silence
@@ -677,9 +711,10 @@ export class Conductor {
         return spent > this.round.budgetMinutes * limit;
     }
 
-    /** Moves to the next item (or round). The editor, if it was open, is closed as the next thing starts to be said. */
+    /** Moves to the next item (or round). Whatever was open — a problem, a design pad, or a sketch pad the
+     * candidate opened themselves during a talk question — is closed as the next thing starts to be said. */
     private advance(justAcknowledged: boolean): Outcome {
-        const hideEditor: ServerEvent[] = this.step.t === "coding" || this.step.t === "design" ? [{ type: "HIDE_CODE_EDITOR" }] : [];
+        const hideEditor: ServerEvent[] = this.step.t === "coding" || this.step.t === "design" || this.talkPadOpen ? [{ type: "HIDE_CODE_EDITOR" }] : [];
         // Leaving a problem for any reason (time, silence) counts as not finishing it if nothing else was recorded.
         if (this.step.t === "coding") this.recordProblemResult(this.step, false, true);
 
@@ -722,6 +757,7 @@ export class Conductor {
         const round = this.round;
         const item = this.item;
         const first = this.itemIdx === 0;
+        this.talkPadOpen = false;
         // Seen as the interviewer starts to speak: the editor closes and the part changes as the next thing is announced.
         const events: ServerEvent[] = [...leading, ...(roundChanged ? [this.roundEvent()] : [])];
         if (roundChanged) this.recordSystem(`Part ${this.roundIdx + 1} of ${this.plan.rounds.length}: ${round.title}`);
@@ -788,7 +824,7 @@ export class Conductor {
     private beginClosing(prompt: string, events: ServerEvent[] = []): Turn {
         this.closing = true;
         this.pendingMove = null;
-        const hideEditor: ServerEvent[] = this.step.t === "coding" || this.step.t === "design" ? [{ type: "HIDE_CODE_EDITOR" }] : [];
+        const hideEditor: ServerEvent[] = this.step.t === "coding" || this.step.t === "design" || this.talkPadOpen ? [{ type: "HIDE_CODE_EDITOR" }] : [];
         this.step = { t: "close" };
         return this.turn("close", directives.close({ prompt, time: this.time }), [...hideEditor, ...events], ["END"], 220);
     }
