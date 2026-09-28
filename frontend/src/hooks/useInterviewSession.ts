@@ -13,7 +13,8 @@ export type ClientMessage =
     | { type: "SUBMIT_NOTES"; text: string }
     | { type: "USER_TEXT"; text: string }
     | { type: "CLIENT_STATS"; lossPercent: number; concealedPercent: number; jitterMs: number; packets: number }
-    | { type: "END_INTERVIEW" };
+    | { type: "END_INTERVIEW" }
+    | { type: "REQUEST_EDITOR" };
 
 /** The server refused the call for a reason worth acting on, not just showing. */
 export class SessionError extends Error {

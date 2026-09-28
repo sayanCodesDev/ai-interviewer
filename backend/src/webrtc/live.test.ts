@@ -164,6 +164,17 @@ describe("LiveInterview", () => {
         assert.ok(candidate.length >= 1 && candidate.length <= 5);
         assert.equal(candidate[candidate.length - 1].text, "I would use a hash map.");
     });
+
+    test("asking to open the editor during a talk round is answered honestly: there is nothing to open", async () => {
+        const { connect, live } = await setup();
+        const voice = await connect();
+        const stopsBefore = voice.stops;
+        voice.handlers.onClientMessage(JSON.stringify({ type: "REQUEST_EDITOR" }));
+        await live.idle();
+        assert.equal(voice.of("SHOW_CODE_EDITOR").length, 0);
+        assert.equal(voice.of("NOTICE").pop().level, "info");
+        assert.equal(voice.stops, stopsBefore, "asking for the editor is not treated as interrupting the interviewer");
+    });
 });
 
 describe("LiveInterview: interruptions", () => {
@@ -401,6 +412,24 @@ describe("LiveInterview: the interview follows what has been heard", () => {
         await ctx.live.idle();
         assert.equal(voice.of("SHOW_CODE_EDITOR").length, 1, "it opens as the introduction ends");
     });
+
+    test("the candidate can open the editor themselves rather than wait for the introduction to finish", async () => {
+        const ctx = await setup("quick", { transitionBeatMs: 60 });
+        const voice = await ctx.connect();
+        voice.holdAfter = /first problem/;
+        for (let i = 0; i < 10 && !voice.hold; i++) {
+            voice.handlers.onCandidateTurn(ANSWER);
+            await Promise.race([ctx.live.idle(), until(() => voice.hold).catch(() => undefined)]);
+        }
+        assert.equal(voice.of("SHOW_CODE_EDITOR").length, 0, "the interviewer has not opened it on its own yet");
+
+        // Answered synchronously, unlike a spoken turn: the interviewer's own introduction is still mid-playback
+        // (voice.hold is still true) and never finishes in this test, so anything that waited on live.idle() here
+        // would hang on that stuck playback forever. Opening the editor on request must not depend on it.
+        voice.handlers.onClientMessage(JSON.stringify({ type: "REQUEST_EDITOR" }));
+        assert.equal(voice.of("SHOW_CODE_EDITOR").length, 1, "asking for it opens the same problem right away");
+        assert.ok(voice.of("SHOW_CODE_EDITOR")[0].problem, "it is the real, current problem, not a placeholder");
+    });
 });
 
 async function ctx_say(voice: FakeVoice, live: LiveInterview, text: string) {
@@ -539,6 +568,14 @@ describe("LiveInterview: coding", () => {
         await live.idle();
         assert.equal(voice.of("SUBMISSION_RESULT").length, 0);
         assert.equal(voice.of("NOTICE").pop().level, "warning");
+    });
+
+    test("the candidate can re-request the editor at any point in a coding round, e.g. after a reconnect dropped it", async () => {
+        const { voice, live } = await toCoding();
+        const before = voice.of("SHOW_CODE_EDITOR").length;
+        voice.handlers.onClientMessage(JSON.stringify({ type: "REQUEST_EDITOR" }));
+        await live.idle();
+        assert.equal(voice.of("SHOW_CODE_EDITOR").length, before + 1, "delivered again on request");
     });
 });
 

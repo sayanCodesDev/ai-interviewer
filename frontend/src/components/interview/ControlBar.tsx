@@ -8,9 +8,10 @@ import { cn } from "@/lib/utils";
 interface ControlBarProps {
     isMicMuted: boolean;
     onToggleMic: () => void;
-    /** Whether the interviewer has opened an editor (a problem or a notes pad). Nothing to toggle otherwise. */
+    /** Whether the interviewer has already opened an editor (a coding problem or a design pad). */
     editorAvailable: boolean;
     editorVisible: boolean;
+    /** Toggles visibility if already open; otherwise asks the server to open whatever the current round has — the candidate's own way in if the interviewer never opened it. */
     onToggleEditor: () => void;
     captionsOn: boolean;
     onToggleCaptions: () => void;
@@ -65,27 +66,28 @@ export function ControlBar(props: ControlBarProps) {
                 <RoundButton label={typeOpen ? "Close text box" : "Type instead of speaking"} pressed={typeOpen} onClick={onToggleType} disabled={disabled} shortcut="T">
                     <Keyboard />
                 </RoundButton>
-                {editorAvailable && (
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button
-                                variant="ghost"
-                                size="lg"
-                                onClick={onToggleEditor}
-                                disabled={disabled}
-                                aria-pressed={editorVisible}
-                                aria-label={editorVisible ? "Hide code editor" : "Show code editor"}
-                                className={cn("rounded-full px-4 sm:px-5", editorVisible ? "bg-signal text-signal-foreground hover:bg-signal/85" : "bg-night text-night-foreground hover:bg-accent")}
-                            >
-                                <CodeXml />
-                                <span className="hidden sm:inline">Editor</span>
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            {editorVisible ? "Hide editor" : "Show editor"} <Kbd>E</Kbd>
-                        </TooltipContent>
-                    </Tooltip>
-                )}
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="lg"
+                            onClick={onToggleEditor}
+                            disabled={disabled}
+                            aria-pressed={editorAvailable && editorVisible}
+                            aria-label={!editorAvailable ? "Open the code editor or whiteboard" : editorVisible ? "Hide editor" : "Show editor"}
+                            className={cn(
+                                "rounded-full px-4 sm:px-5",
+                                editorAvailable && editorVisible ? "bg-signal text-signal-foreground hover:bg-signal/85" : "bg-night text-night-foreground hover:bg-accent",
+                            )}
+                        >
+                            <CodeXml />
+                            <span className="hidden sm:inline">{editorAvailable ? "Editor" : "Open editor"}</span>
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                        {!editorAvailable ? "Open the editor or whiteboard yourself, if the interviewer hasn't yet" : editorVisible ? "Hide editor" : "Show editor"} <Kbd>E</Kbd>
+                    </TooltipContent>
+                </Tooltip>
 
                 <div aria-hidden className="mx-1 h-6 w-px bg-night-line" />
 

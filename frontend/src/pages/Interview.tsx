@@ -126,7 +126,16 @@ export function Interview() {
         setEditor((current) => (current.open ? { ...current, visible: !current.visible } : current));
     }, []);
 
-    const { toggleMic } = session;
+    const { toggleMic, send } = session;
+    // If the interviewer never opened the editor or whiteboard (or a reconnect dropped it), the candidate can
+    // ask for it directly: the server answers with whatever the conductor's own state says is current, so this
+    // can never show something stale or wrong — it just can't stay silent because the AI forgot to call it.
+    const requestEditor = useCallback(() => { send({ type: "REQUEST_EDITOR" }); }, [send]);
+    const onEditorButton = useCallback(() => {
+        if (editor.open) toggleEditor();
+        else requestEditor();
+    }, [editor.open, toggleEditor, requestEditor]);
+
     useEffect(() => {
         function onKeyDown(event: KeyboardEvent) {
             if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return;
@@ -135,13 +144,13 @@ export function Interview() {
 
             const key = event.key.toLowerCase();
             if (key === "m") { event.preventDefault(); toggleMic(); }
-            else if (key === "e") { event.preventDefault(); toggleEditor(); }
+            else if (key === "e") { event.preventDefault(); onEditorButton(); }
             else if (key === "c") { event.preventDefault(); setCaptionsOn((on) => !on); }
             else if (key === "t") { event.preventDefault(); setTypeOpen((open) => !open); }
         }
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [toggleMic, toggleEditor]);
+    }, [toggleMic, onEditorButton]);
 
     // The room ended on the server side (already finished, or lost): go somewhere useful.
     useEffect(() => {
@@ -253,7 +262,7 @@ export function Interview() {
                 onToggleMic={session.toggleMic}
                 editorAvailable={editor.open}
                 editorVisible={editor.visible}
-                onToggleEditor={toggleEditor}
+                onToggleEditor={onEditorButton}
                 captionsOn={captionsOn}
                 onToggleCaptions={() => setCaptionsOn((on) => !on)}
                 typeOpen={typeOpen}

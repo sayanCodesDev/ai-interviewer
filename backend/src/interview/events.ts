@@ -51,6 +51,8 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
         packets: z.number().int().min(0).max(1_000_000),
     }),
     z.object({ type: z.literal("END_INTERVIEW") }),
+    /** The candidate opening the editor or whiteboard themselves, in case the interviewer never did. Safe to send any time: answered with the current problem/pad if one exists, or a NOTICE if not. */
+    z.object({ type: z.literal("REQUEST_EDITOR") }),
     z.object({ type: z.literal("PING") }),
 ]);
 
