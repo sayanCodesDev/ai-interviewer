@@ -4,6 +4,7 @@ import { Faq } from "@/components/landing/Faq";
 import { FinalCta } from "@/components/landing/FinalCta";
 import { Hero } from "@/components/landing/Hero";
 import { HowItWorks } from "@/components/landing/HowItWorks";
+import { MockInterviews } from "@/components/landing/MockInterviews";
 import { SiteFooter } from "@/components/landing/SiteFooter";
 import { SiteNav } from "@/components/landing/SiteNav";
 
@@ -16,6 +17,7 @@ export function Landing() {
                 <CapabilityStrip />
                 <HowItWorks />
                 <Bento />
+                <MockInterviews />
                 <Faq />
                 <FinalCta />
             </main>
