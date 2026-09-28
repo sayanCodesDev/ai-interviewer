@@ -61,6 +61,16 @@ describe("GET /api/interviews/:id/report", () => {
         const res = await client.get(`/api/interviews/${id}/report`);
         assert.equal(res.body.status, "NONE");
         assert.equal(res.body.report, null);
+        assert.equal(res.body.interview.continuesFromId, null, "a standalone interview does not continue anything");
+    });
+
+    test("an abandoned 'Practice this' retry says which report it continues, so the page can send the candidate back to it", async () => {
+        const { client, userId } = await signedIn("a@example.com");
+        const original = await interview(userId);
+        const retry = await interview(userId, { status: "ABANDONED", reportStatus: "NONE", continuesFromId: original, trackId: original, trackPosition: 2 });
+        const res = await client.get(`/api/interviews/${retry}/report`);
+        assert.equal(res.body.status, "NONE");
+        assert.equal(res.body.interview.continuesFromId, original);
     });
 
     test("is refused while the interview is still going, and for anyone else", async () => {

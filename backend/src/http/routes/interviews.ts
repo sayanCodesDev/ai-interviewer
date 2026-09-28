@@ -218,6 +218,9 @@ export function interviewsRouter(limits: RateLimits): Router {
             interview: {
                 id: row.id, role: row.targetRole, level: row.level, format: row.format, status: row.status,
                 startedAt: row.startedAt, endedAt: row.endedAt, endReason: row.endReason,
+                // Set only for a "Practice this" retry: lets the report page send an abandoned retry back to
+                // the report it continues, instead of stranding the candidate on an empty one of its own.
+                continuesFromId: row.continuesFromId,
                 rounds: plan?.rounds.map((r) => ({ key: r.key, title: r.title, type: r.type })) ?? [],
             },
             status: row.reportStatus,

@@ -158,7 +158,13 @@ export interface TranscriptEntry {
 }
 
 export interface ReportResponse {
-    interview: { id: string; role: string; level: Level; format: Format; status: InterviewMeta["status"]; startedAt: string | null; endedAt: string | null; endReason: string | null; rounds: Array<{ key: string; title: string; type: RoundType }> };
+    interview: {
+        id: string; role: string; level: Level; format: Format; status: InterviewMeta["status"];
+        startedAt: string | null; endedAt: string | null; endReason: string | null;
+        /** Set only for a "Practice this" retry: the report it continues. */
+        continuesFromId: string | null;
+        rounds: Array<{ key: string; title: string; type: RoundType }>;
+    };
     status: InterviewMeta["reportStatus"];
     error: string | null;
     report: ReportData | null;

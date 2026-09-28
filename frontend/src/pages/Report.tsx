@@ -166,6 +166,16 @@ export function Report() {
         };
     }, [load]);
 
+    // A "Practice this" retry ended too quickly to count as an attempt (see the "NONE" panel below): rather
+    // than strand the candidate on that near-empty page, send them back to the report they were practising
+    // from, unchanged — as if the retry they abandoned had never been started.
+    useEffect(() => {
+        const continuesFromId = data?.status === "NONE" ? data.interview.continuesFromId : null;
+        if (!continuesFromId) return;
+        const timer = setTimeout(() => navigate(`/report/${continuesFromId}`, { replace: true }), 1800);
+        return () => clearTimeout(timer);
+    }, [data, navigate]);
+
     const jumpTo = useCallback((turn: number) => {
         const el = document.getElementById(`t-${turn}`);
         if (!el) return;
@@ -274,10 +284,12 @@ export function Report() {
                 )}
 
                 {data.status === "NONE" && (
-                    <div className="mt-12 rounded-xl border bg-card p-8">
-                        <h2 className="text-h3">Not enough to assess.</h2>
+                    <div role="status" aria-live="polite" className="mt-12 rounded-xl border bg-card p-8">
+                        <h2 className="text-h3">{data.interview.continuesFromId ? "That practice run didn't really start." : "Not enough to assess."}</h2>
                         <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                            This session was too short for a fair report: it needs a few answers or at least one code submission. Your transcript is below, and you can start again whenever you're ready.
+                            {data.interview.continuesFromId
+                                ? "It ended too quickly to count as an attempt, so nothing changes on the report you were practising from — taking you back to it now."
+                                : "This session was too short for a fair report: it needs a few answers or at least one code submission. Your transcript is below, and you can start again whenever you're ready."}
                         </p>
                     </div>
                 )}
