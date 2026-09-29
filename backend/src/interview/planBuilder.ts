@@ -29,7 +29,9 @@ function itemsFor(spec: RoundSpec, key: string, input: BuildPlanInput, usedProbl
         case "intro":
             return [talk(`${key}:0`, "Introduction",
                 `Greet the candidate, introduce yourself as their interviewer for the ${role} role, briefly say how the session will run (a chat about their background, coding in an editor, some technical questions, and time for their questions), then ask them to introduce themselves.`,
-                ["A concise summary of their experience", "Skills relevant to the role", "Why they are interested"], [], 1)];
+                ["A concise summary of their experience", "Skills relevant to the role", "Why they are interested"],
+                // Light, getting-to-know-you follow-ups: the deeper questions about their work come in the next part.
+                ["What they are working on or learning right now", "What drew them to this kind of role", "What they enjoy most about the work"], 2)];
 
         case "background":
             return analysis.background.slice(0, spec.count).map((b, i) => talk(`${key}:${i}`, b.topic, b.question, b.lookFor, [], 2));

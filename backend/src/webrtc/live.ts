@@ -33,8 +33,11 @@ const CLOSING_AUDIO_GRACE_MS = 900;
 const BARGE_IN_WORDS = 3;
 /** How long the interviewer stays dipped when nothing more is heard. */
 const DUCK_HOLD_MS = 1_200;
-/** After the interviewer says it is moving on, the candidate gets this long to add something before the next question is asked. */
-const TRANSITION_BEAT_MS = 1_000;
+/**
+ * After the interviewer says it is moving on, the candidate gets this long to add something before the next question is asked.
+ * A second was too short: by the time speech recognition has heard someone start "oh, and also...", the next part has begun.
+ */
+const TRANSITION_BEAT_MS = 2_000;
 /** If the candidate is still mid-sentence when the pause ends, wait for them, but not forever. */
 const TRANSITION_WAIT_FOR_CANDIDATE_MS = 4_000;
 /** Things that appear as the interviewer starts to speak still appear if no sound is ever played (text mode, speech trouble). */
@@ -139,6 +142,8 @@ export class LiveInterview {
     private lastWeakLogAt = 0;
     private duckTimer: NodeJS.Timeout | undefined;
     private silenceTimers: NodeJS.Timeout[] = [];
+    /** Bumped whenever the silence clock is reset, so a check-in armed for a quiet that has since ended never goes off. */
+    private silenceGeneration = 0;
     /** Recognises the interviewer's own voice leaking back through the candidate's microphone. */
     private readonly echo = new EchoGuard();
     private suspendTimer: NodeJS.Timeout | null = null;
@@ -628,10 +633,10 @@ export class LiveInterview {
 
         this.send({ type: "CAPTION", id: captionId, role: "interviewer", text: result.text || sentences.join(" "), final: true });
         const outcome = this.conductor.finishTurn(turn, result);
-        // Whatever was waiting for this turn to be said is shown now.
+        // Whatever was waiting for this turn to be said is shown now, unless it was never heard being introduced.
         if (!this.finalized) {
             if (!startEventsSent) for (const event of turn.events) this.send(event);
-            for (const event of turn.eventsAfter) this.send(event);
+            if (!outcome.withholdEventsAfter) for (const event of turn.eventsAfter) this.send(event);
         }
         return outcome;
     }
@@ -639,6 +644,7 @@ export class LiveInterview {
     // ---------------------------------------------------------------------------------- silence
 
     private clearSilenceTimers(): void {
+        this.silenceGeneration++;
         for (const timer of this.silenceTimers) clearTimeout(timer);
         this.silenceTimers = [];
     }
@@ -646,26 +652,31 @@ export class LiveInterview {
     /** Once the interviewer has stopped speaking, start the clock on how long the candidate stays quiet. */
     private watchSilence(): void {
         this.clearSilenceTimers();
+        const generation = this.silenceGeneration;
         const policy = this.conductor.silencePolicy();
         const voice = this.voice;
         if (!policy || !voice) return;
 
         void voice.drained().then(() => {
-            if (this.finalized || voice !== this.voice || voice.isClosed) return;
+            // The next turn may already have begun while the last audio drained (the candidate spoke, a problem is being
+            // introduced again): the quiet this clock was for is over, so it must not start now.
+            if (generation !== this.silenceGeneration || this.finalized || voice !== this.voice || voice.isClosed) return;
             this.send({ type: "STATE", state: "listening" });
             const levels: Array<[1 | 2 | 3, number | null]> = [[1, policy.nudgeMs[0]], [2, policy.nudgeMs[1]], [3, policy.autoAdvanceMs]];
             for (const [level, ms] of levels) {
                 if (ms === null) continue;
-                const timer = setTimeout(() => this.fireSilence(level), ms);
+                const timer = setTimeout(() => this.fireSilence(level, generation), ms);
                 timer.unref();
                 this.silenceTimers.push(timer);
             }
         });
     }
 
-    private fireSilence(level: 1 | 2 | 3): void {
+    private fireSilence(level: 1 | 2 | 3, generation: number): void {
         if (this.finalized || this.replyActive || this.voice?.candidateSpeaking) return;
         this.enqueue(async () => {
+            // Queued behind whatever was already running: if anything reset the clock meanwhile, this check-in is stale.
+            if (generation !== this.silenceGeneration) return;
             await this.perform(this.conductor.onSilence(level));
         });
     }

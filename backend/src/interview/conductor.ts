@@ -56,6 +56,8 @@ export interface Outcome {
      * gives the candidate a moment to add something, then calls commitTransition(), or cancelTransition() if they spoke.
      */
     transition?: boolean;
+    /** The turn's eventsAfter must not be sent: what they would open (a coding problem) was never heard being introduced. */
+    withholdEventsAfter?: boolean;
 }
 
 export interface ConductorOptions {
@@ -76,11 +78,18 @@ export function endsInQuestion(text: string): boolean {
     return /\?["')\]]?\s*$/.test(text.trim());
 }
 
+/** Whether what was said asks the candidate anything at all, even if it goes on after the question. */
+function asksSomething(text: string): boolean {
+    return text.includes("?");
+}
+
 type Step =
     | { t: "talk"; probes: number; brief?: number; words: number; overrun?: number }
     | {
           t: "coding";
           phase: "present" | "working" | "followup";
+          /** Times the problem has been introduced without being heard (talked over, or the reply failed). */
+          unheard?: number;
           attempt: number;
           hints: number;
           pendingOutcome: "passed" | "retry" | "exhausted" | null;
@@ -91,7 +100,7 @@ type Step =
           words: number;
           overrun?: number;
       }
-    | { t: "design"; probes: number; notes: string }
+    | { t: "design"; probes: number; notes: string; overrun?: number }
     | { t: "close" };
 
 
@@ -118,6 +127,17 @@ const CODE_ON_SCREEN_CHARS = 1_800;
 const MIN_WORDS_BEFORE_MOVING_ON = 25;
 /** How much of a new question must have been heard for the candidate's next words to count as an answer to it. */
 const HEARD_ENOUGH = 0.75;
+/**
+ * A reply that asks the candidate something is never followed straight away by a move on, however many follow-ups the
+ * question has used: they get to answer it first. This caps how often that can happen on one question, so a model that
+ * keeps asking after being told to stop cannot hold a question open for ever.
+ */
+const MAX_HELD_OPEN = 3;
+/**
+ * A coding problem is introduced again when its introduction was not heard, but not endlessly: if the model is down, or the
+ * candidate keeps talking over it, the editor opens after this many tries anyway, so they can at least read the problem.
+ */
+const MAX_UNHEARD_INTRODUCTIONS = 3;
 
 const speechOnlyTurns = { maxTokens: 200 };
 
@@ -403,6 +423,9 @@ export class Conductor {
                     step.words += this.lastCandidateWords;
                     return this.respondTurn(this.followUpView(step.followUps[step.followUpIndex]!, step), step);
                 }
+                // They spoke over the problem being introduced, most likely still finishing the last topic: answer that,
+                // then introduce the problem properly. The editor stays shut until it has been.
+                if (step.phase === "present") return this.presentTurn([], "spoke_over");
                 const def = this.problem();
                 // The submission settled it (passed, or out of attempts): what they say now is about that, not more coding.
                 if (step.pendingOutcome === "passed" || step.pendingOutcome === "exhausted") {
@@ -497,26 +520,40 @@ export class Conductor {
 
     // ----------------------------------------------------------------------------------- silence
 
+    /**
+     * What the candidate is quietly getting on with, if anything: writing code, or drawing on a whiteboard (the design
+     * pad, or a sketch pad they opened for a talk question). Quiet is expected then, not a sign they are stuck.
+     */
+    private get quietWork(): "code" | "sketch" | null {
+        const step = this.step;
+        if (step.t === "coding" && step.phase === "working") return "code";
+        if (step.t === "design" || (step.t === "talk" && this.talkPadOpen)) return "sketch";
+        return null;
+    }
+
     /** How long to wait before each nudge, given what the candidate is doing. Null means never. */
     silencePolicy(): { nudgeMs: [number, number]; autoAdvanceMs: number | null } | null {
         if (this.ended || this.closing) return null;
-        if (this.step.t === "coding" && this.step.phase !== "followup") return { nudgeMs: [120_000, 300_000], autoAdvanceMs: null };
+        // The problem was never heard being introduced (the reply failed, or was cut off with nothing said after):
+        // introduce it again after a short pause rather than leave them waiting for a problem that never came.
+        if (this.step.t === "coding" && this.step.phase === "present") return { nudgeMs: [6_000, 45_000], autoAdvanceMs: null };
+        const work = this.quietWork;
+        if (work === "code") return { nudgeMs: [120_000, 300_000], autoAdvanceMs: null };
+        // Drawing an architecture takes minutes. Check in now and then, and never move on because of the quiet.
+        if (work === "sketch") return { nudgeMs: [90_000, 240_000], autoAdvanceMs: null };
         return { nudgeMs: [22_000, 50_000], autoAdvanceMs: 85_000 };
     }
 
     onSilence(level: 1 | 2 | 3): Turn | null {
         if (this.ended || this.closing) return null;
-        const step = this.step;
-        const coding = step.t === "coding" && step.phase !== "followup";
+        if (this.step.t === "coding" && this.step.phase === "present") return level === 3 ? null : this.presentTurn([], "retry");
+        const work = this.quietWork;
 
         if (level === 3) {
-            if (coding) return null;
+            if (work) return null;
             return this.turn("force_advance", directives.forceAdvance({ time: this.time }), [], ["ADVANCE"]);
         }
-        const context = coding
-            ? level === 1 ? "They are writing code. Ask how it is going and whether they would like to talk through their approach." : "They may be stuck. Offer a hint if they would like one."
-            : level === 1 ? "You are waiting for their answer to your last question." : "You are still waiting for their answer to your last question.";
-        return this.turn("nudge", directives.nudge({ level: level as 1 | 2, context, code: coding ? this.codeOnScreen() : undefined, time: this.time }));
+        return this.turn("nudge", directives.nudge({ level: level as 1 | 2, work: work ?? "answer", code: work === "code" ? this.codeOnScreen() : undefined, time: this.time }));
     }
 
     /** The call dropped and came back. */
@@ -524,6 +561,8 @@ export class Conductor {
         if (this.ended || this.closing) return null;
         this.pendingMove = null;
         const step = this.step;
+        // They dropped before the problem had been introduced: introduce it now, rather than say it is "still open".
+        if (step.t === "coding" && step.phase === "present") return this.presentTurn([], "retry");
         let where = "";
         if (step.t === "coding" && step.phase !== "followup") where = "remind them the problem is still open in the editor and invite them to continue.";
         else if (step.t === "coding") where = `briefly repeat your last question: "${step.followUps[step.followUpIndex]?.prompt ?? ""}"`;
@@ -568,12 +607,37 @@ export class Conductor {
             this.ended = "completed";
             return { next: null, events: [], ended: "completed" };
         }
+
+        const step = this.step;
+        // A coding problem is set once its introduction has been heard. If it wasn't (the candidate talked over it, most
+        // likely still finishing the last topic, or the reply failed), the editor stays shut and the problem is introduced
+        // again first: never a problem popping up on screen that nobody has explained.
+        if (turn.kind === "present" && step.t === "coding" && step.phase === "present") {
+            if (reply.interrupted && !reply.delivered) {
+                step.unheard = (step.unheard ?? 0) + 1;
+                if (step.unheard < MAX_UNHEARD_INTRODUCTIONS) {
+                    this.recordSystem("The candidate did not hear the coding problem introduced; it will be introduced again before the editor opens.");
+                    return { next: null, events: [], withholdEventsAfter: true };
+                }
+                this.recordSystem("The coding problem could not be introduced aloud; the editor was opened so the candidate can read it.");
+            }
+            step.phase = "working";
+        }
         // A settled submission decides what comes next (the follow-up questions, or the next problem), whatever happened to the reply
         // about it: cut off by the candidate, or lost to a model that was busy. Nothing is left waiting on words that never finished.
         if (reply.interrupted) return this.settledMove() ?? none;
 
         const markers = reply.markers.filter((m) => turn.allowedMarkers.includes(m));
-        const step = this.step;
+        // A reply that asks the candidate something is waiting for an answer: it cannot also be closing the topic, whatever the
+        // model or the follow-up count says. Moving on a second after asking is what makes an interview feel like it skipped.
+        const holdOpen = () => {
+            if (!asksSomething(reply.text) || (step.t !== "talk" && step.t !== "coding" && step.t !== "design") || (step.overrun ?? 0) >= MAX_HELD_OPEN) return false;
+            step.overrun = (step.overrun ?? 0) + 1;
+            return true;
+        };
+        // Only a reply that was allowed to close the question can. One told to hear more (they were cut off, said they don't
+        // know, or have barely begun) is never closed behind its back by the follow-up count.
+        const mayClose = turn.allowedMarkers.includes("ADVANCE");
 
         switch (turn.kind) {
             case "opening":
@@ -581,26 +645,18 @@ export class Conductor {
             case "followup_ask":
             case "design_ask":
             case "present":
-                if (turn.kind === "present" && step.t === "coding") step.phase = "working";
                 return none;
 
             case "respond": {
-                // A reply that ends in a question is waiting for an answer: it cannot also be closing the topic, whatever else the
-                // model said. (Once, at the cap, so a model that never stops asking cannot hold a question open for ever.)
-                const holdOpen = () => {
-                    if (!endsInQuestion(reply.text) || (step.t !== "talk" && step.t !== "coding") || (step.overrun ?? 0) >= 1) return false;
-                    step.overrun = (step.overrun ?? 0) + 1;
-                    return true;
-                };
                 if (step.t === "talk") {
-                    const done = markers.includes("ADVANCE") || step.probes >= (this.item as TalkItem).maxProbes || (step.brief ?? 0) >= MAX_BRIEF_IN_A_ROW;
+                    const done = mayClose && (markers.includes("ADVANCE") || step.probes >= (this.item as TalkItem).maxProbes || (step.brief ?? 0) >= MAX_BRIEF_IN_A_ROW);
                     if (done && !holdOpen()) return this.defer(() => this.advance(true));
                     if (this.lastCandidateWords >= BRIEF_ANSWER_WORDS) step.probes++;
                     return none;
                 }
                 if (step.t === "coding" && step.phase === "followup") {
                     const followUp = step.followUps[step.followUpIndex]!;
-                    const done = markers.includes("ADVANCE") || step.probes >= followUp.maxProbes || (step.brief ?? 0) >= MAX_BRIEF_IN_A_ROW;
+                    const done = mayClose && (markers.includes("ADVANCE") || step.probes >= followUp.maxProbes || (step.brief ?? 0) >= MAX_BRIEF_IN_A_ROW);
                     if (!done || holdOpen()) {
                         if (this.lastCandidateWords >= BRIEF_ANSWER_WORDS) step.probes++;
                         return none;
@@ -613,7 +669,7 @@ export class Conductor {
             case "design_respond": {
                 if (step.t !== "design") return none;
                 const done = markers.includes("ADVANCE") || step.probes >= (this.item as DesignItem).maxProbes;
-                if (done) return this.defer(() => this.advance(true));
+                if (done && !holdOpen()) return this.defer(() => this.advance(true));
                 step.probes++;
                 return none;
             }
@@ -717,6 +773,7 @@ export class Conductor {
         const hideEditor: ServerEvent[] = this.step.t === "coding" || this.step.t === "design" || this.talkPadOpen ? [{ type: "HIDE_CODE_EDITOR" }] : [];
         // Leaving a problem for any reason (time, silence) counts as not finishing it if nothing else was recorded.
         if (this.step.t === "coding") this.recordProblemResult(this.step, false, true);
+        const leaving = this.round.title;
 
         this.itemIdx += 1;
         let roundChanged = false;
@@ -745,7 +802,7 @@ export class Conductor {
             this.ended = "completed";
             return { next: null, events: hideEditor, ended: "completed" };
         }
-        return { next: this.startItem(roundChanged, justAcknowledged, hideEditor), events: [] };
+        return { next: this.startItem(roundChanged ? leaving : null, justAcknowledged, hideEditor), events: [] };
     }
 
     private completeRound(): void {
@@ -753,10 +810,15 @@ export class Conductor {
         this.options.onRoundComplete?.(this.round, this.history.filter((u) => u.roundKey === key));
     }
 
-    private startItem(roundChanged: boolean, justAcknowledged: boolean, leading: ServerEvent[] = []): Turn {
+    /**
+     * Starts the next item. `leftPart` is the title of the part just finished when this item begins a new one, so the
+     * interviewer can close that part in a few words before starting the next, instead of jumping straight in.
+     */
+    private startItem(leftPart: string | null, justAcknowledged: boolean, leading: ServerEvent[] = []): Turn {
         const round = this.round;
         const item = this.item;
         const first = this.itemIdx === 0;
+        const roundChanged = leftPart !== null;
         this.talkPadOpen = false;
         // Seen as the interviewer starts to speak: the editor closes and the part changes as the next thing is announced.
         const events: ServerEvent[] = [...leading, ...(roundChanged ? [this.roundEvent()] : [])];
@@ -766,24 +828,36 @@ export class Conductor {
             this.adaptProblem(item);
             const def = getProblemDef(item.problemKey)!;
             this.step = { t: "coding", phase: "present", attempt: 0, hints: 0, pendingOutcome: null, followUps: [], followUpIndex: -1, probes: 0, words: 0 };
-            const number = this.problemNumber(item.id);
-            this.recordSystem(`Coding problem ${number} of ${this.totalProblems}: "${def.title}"`);
-            // The editor opens once the problem has been introduced aloud, not before the interviewer has said a word about it.
-            const editor = this.editorEvent();
-            return this.turn("present", directives.presentProblem({ number, total: this.totalProblems, title: def.title, difficulty: def.difficulty, statement: def.statement, firstProblem: number === 1, why: item.why, time: this.time }), events, [], 260, editor ? [editor] : []);
+            this.recordSystem(`Coding problem ${this.problemNumber(item.id)} of ${this.totalProblems}: "${def.title}"`);
+            return this.presentTurn(events, "first", leftPart);
         }
 
         if (item.kind === "design") {
             this.step = { t: "design", probes: 0, notes: "" };
             const pad = this.editorEvent();
-            return this.turn("design_ask", directives.designAsk({ title: item.title, prompt: item.prompt, lookFor: item.lookFor, firstInRound: first, time: this.time }), events, [], speechOnlyTurns.maxTokens, pad ? [pad] : []);
+            return this.turn("design_ask", directives.designAsk({ title: item.title, prompt: item.prompt, lookFor: item.lookFor, firstInRound: first, leftPart, time: this.time }), events, [], speechOnlyTurns.maxTokens, pad ? [pad] : []);
         }
 
         // A talk item. The last item of the wrap-up is the closing.
         if (round.type === "wrapup" && this.itemIdx === round.items.length - 1) return this.beginClosing(item.prompt, events);
 
         this.step = { t: "talk", probes: 0, words: 0 };
-        return this.turn("ask", directives.ask(this.talkView(item, 0, first), justAcknowledged), events);
+        return this.turn("ask", directives.ask(this.talkView(item, 0, first), justAcknowledged, leftPart), events);
+    }
+
+    /**
+     * Introduces the current coding problem aloud; the editor opens once that has been heard (see finishTurn()). `retry`
+     * is a second go after the first was lost or never finished; `spoke_over` also answers what the candidate said over it.
+     */
+    private presentTurn(events: ServerEvent[], attempt: "first" | "retry" | "spoke_over", leftPart: string | null = null): Turn {
+        const item = this.item as CodingItem;
+        const def = this.problem();
+        const number = this.problemNumber(item.id);
+        const editor = this.editorEvent();
+        return this.turn("present", directives.presentProblem({
+            number, total: this.totalProblems, title: def.title, difficulty: def.difficulty, statement: def.statement,
+            firstProblem: number === 1, why: item.why, leftPart, again: attempt === "first" ? undefined : attempt, time: this.time,
+        }), events, [], 260, editor ? [editor] : []);
     }
 
     /** Notes how the current coding problem went, once, so the next one can be chosen to suit. */
@@ -843,8 +917,10 @@ export class Conductor {
         // "I've never used it": met with a kind, useful follow-up once, and then let go, rather than pressed or ignored.
         const gap = ADMITS_GAP.test(this.lastCandidateText) && this.lastCandidateWords < 40 ? (step.probes >= 1 || (step.brief ?? 0) >= 2 ? "again" : "first") : "none";
         const canProbe = view.probesUsed < view.maxProbes && !moveOn && gap !== "again";
-        // Closing a question on the strength of a sentence or two is how an interview feels like a form being filled in.
-        const mayMoveOn = !cutOff && (moveOn || gap === "again" || (gap !== "first" && (!canProbe || step.words >= MIN_WORDS_BEFORE_MOVING_ON || step.probes >= 1)));
+        // Closing a question on the strength of a sentence or two is how an interview feels like a form being filled in. The
+        // introduction most of all: it is a conversation, so it always gets at least one follow-up before the interview moves on.
+        const heardEnough = view.introduction ? step.probes >= 1 : step.words >= MIN_WORDS_BEFORE_MOVING_ON || step.probes >= 1;
+        const mayMoveOn = !cutOff && (moveOn || gap === "again" || (gap !== "first" && (!canProbe || heardEnough)));
         return this.turn("respond", directives.respond(view, brief, moveOn, mayMoveOn, gap, cutOff, this.lastCandidateWords > RAMBLING_WORDS), [], mayMoveOn ? ["ADVANCE"] : []);
     }
 
@@ -871,6 +947,7 @@ export class Conductor {
             probesUsed,
             maxProbes: item.maxProbes,
             firstInRound,
+            introduction: this.round.type === "intro",
             time: this.time,
         };
     }
