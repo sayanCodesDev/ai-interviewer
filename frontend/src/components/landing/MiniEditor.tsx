@@ -64,7 +64,7 @@ export function MiniEditor({ count = CODE_LENGTH, showCaret = true, className }:
     const caretLine = rows.filter((row) => row.started).at(-1)?.index ?? 0;
 
     return (
-        <pre className={cn("font-mono text-[12px] leading-[1.75] sm:text-[13px]", className)}>
+        <pre className={cn("font-mono text-[13.5px] leading-[1.75] sm:text-[15px]", className)}>
             {rows.map((row) => {
                 let budget = row.shown;
                 const parts: React.ReactNode[] = [];

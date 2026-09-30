@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 const LINKS = [
     { href: "/#how-it-works", label: "How it works" },
     { href: "/#features", label: "Features" },
+    { href: "/#formats", label: "Formats" },
     { href: "/mock-interviews", label: "Mock interviews" },
     { href: "/#faq", label: "FAQ" },
 ];
@@ -45,9 +46,9 @@ export function SiteNav() {
             >
                 <Logo />
 
-                <nav aria-label="Primary" className="hidden items-center gap-8 md:flex">
+                <nav aria-label="Primary" className="hidden items-center gap-7 lg:flex">
                     {LINKS.map((link) => (
-                        <a key={link.href} href={link.href} className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+                        <a key={link.href} href={link.href} className="text-[15.5px] text-muted-foreground transition-colors hover:text-foreground">
                             {link.label}
                         </a>
                     ))}
@@ -55,7 +56,7 @@ export function SiteNav() {
 
                 <div className="flex items-center gap-2">
                     <ThemeToggle />
-                    <div className="hidden items-center gap-2 md:flex">
+                    <div className="hidden items-center gap-2 lg:flex">
                         {status === "authenticated" && <UserMenu />}
                         {status === "unauthenticated" && (
                             <Button asChild variant="ghost">
@@ -69,7 +70,7 @@ export function SiteNav() {
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="md:hidden"
+                        className="lg:hidden"
                         onClick={() => setOpen((current) => !current)}
                         aria-expanded={open}
                         aria-controls="mobile-menu"
@@ -84,7 +85,7 @@ export function SiteNav() {
                 {open && (
                     <m.div
                         id="mobile-menu"
-                        className="overflow-hidden border-t bg-background md:hidden"
+                        className="overflow-hidden border-t bg-background lg:hidden"
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}

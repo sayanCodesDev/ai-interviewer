@@ -11,7 +11,7 @@ export function Faq() {
             <div className="page-container grid gap-12 lg:grid-cols-12 lg:gap-16">
                 <div className="lg:col-span-4">
                     <p className="label-mono text-muted-foreground">FAQ</p>
-                    <h2 className="text-h2 mt-4">Questions, answered.</h2>
+                    <h2 className="text-h2 mt-4">Questions about Intervyu, answered.</h2>
                 </div>
 
                 <m.div className="lg:col-span-8" variants={fadeUp} initial="hidden" whileInView="visible" viewport={inViewOnce}>

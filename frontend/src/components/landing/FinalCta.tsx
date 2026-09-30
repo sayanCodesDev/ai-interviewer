@@ -21,14 +21,14 @@ export function FinalCta() {
                 viewport={inViewOnce}
                 transition={{ duration: 0.9, ease: EASE_OUT_EXPO }}
             >
-                <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-24 opacity-[0.12]">
+                <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-24 opacity-[0.14]">
                     <Waveform level={level} maxBars={140} />
                 </div>
 
                 <div className="relative">
-                    <h2 className="text-display mx-auto max-w-3xl">Ready when you are.</h2>
-                    <p className="mx-auto mt-6 max-w-md text-[17px] leading-relaxed opacity-70">
-                        Start whenever you like. All you need is a microphone and a few quiet minutes.
+                    <h2 className="text-display mx-auto max-w-4xl">Your next interview, rehearsed.</h2>
+                    <p className="text-lede mx-auto mt-6 max-w-lg opacity-75">
+                        Twenty minutes is enough to find out what you'd stumble on. All you need is a microphone and somewhere quiet.
                     </p>
                     <Button variant="signal" size="lg" onClick={start} disabled={checking} className="group mt-10">
                         {checking && <Spinner />}

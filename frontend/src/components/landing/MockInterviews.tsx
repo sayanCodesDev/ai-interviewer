@@ -25,7 +25,7 @@ export function MockInterviews() {
                     <div className="max-w-2xl">
                         <p className="label-mono text-muted-foreground">Mock interviews</p>
                         <h2 className="text-h2 mt-4">See the interview before you take it.</h2>
-                        <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-muted-foreground">
+                        <p className="text-lede mt-5 max-w-xl text-muted-foreground">
                             {ROLE_CONTENT.length} roles, each with its own real loop — sample questions, coding topics and what a strong answer covers.
                         </p>
                     </div>
@@ -48,16 +48,16 @@ export function MockInterviews() {
                                 to={`/mock-interviews/${role.slug}`}
                                 className="group flex h-full flex-col rounded-2xl border bg-card p-6 transition-colors hover:border-foreground/40"
                             >
-                                <h3 className="text-[17px] font-medium">{role.role}</h3>
-                                <p className="mt-2 flex-1 text-[14px] leading-relaxed text-muted-foreground">{role.summary}</p>
+                                <h3 className="text-[19px] font-medium">{role.role}</h3>
+                                <p className="mt-2 flex-1 text-[16px] leading-relaxed text-muted-foreground">{role.summary}</p>
                                 <p className="mt-4 flex flex-wrap gap-1.5">
                                     {role.focusAreas.slice(0, 2).map((area) => (
-                                        <span key={area} className="rounded-full border px-2.5 py-1 text-[12px] text-muted-foreground">
+                                        <span key={area} className="rounded-full border px-2.5 py-1 text-[13.5px] text-muted-foreground">
                                             {area}
                                         </span>
                                     ))}
                                 </p>
-                                <span className="mt-5 inline-flex items-center gap-1.5 text-[13px] font-medium">
+                                <span className="mt-5 inline-flex items-center gap-1.5 text-[15px] font-medium">
                                     See the interview
                                     <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
                                 </span>

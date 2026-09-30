@@ -9,9 +9,11 @@ export function RolesIndex() {
         <MarketingLayout>
             <div className="page-container py-16 sm:py-24">
                 <p className="label-mono text-muted-foreground">Mock interviews</p>
-                <h1 className="text-h2 mt-4 max-w-3xl">Practise the interview for the role you actually want.</h1>
-                <p className="mt-6 max-w-2xl text-[17px] leading-relaxed text-muted-foreground">
-                    Every interview is a real loop: an introduction, questions about your background, live coding problems with hidden tests, technical questions, a behavioral round and time for your own questions. Pick a role to see what it covers.
+                <h1 className="text-h2 mt-4 max-w-3xl">AI mock interviews for the role you actually want.</h1>
+                <p className="text-lede mt-6 max-w-2xl text-muted-foreground">
+                    Every Intervyu interview is a real loop: an introduction, questions about your background, live coding problems with hidden tests,
+                    technical questions from your job description, system design on a whiteboard from mid-level up, a behavioral round and time for your
+                    own questions. Pick a role to see what it covers.
                 </p>
 
                 <ul className="mt-14 grid gap-4 md:grid-cols-2">
@@ -19,10 +21,10 @@ export function RolesIndex() {
                         <li key={role.slug}>
                             <Link to={`/mock-interviews/${role.slug}`} className="group flex h-full flex-col rounded-2xl border bg-card p-7 transition-colors hover:border-foreground/40">
                                 <h2 className="text-h3">{role.role}</h2>
-                                <p className="mt-3 flex-1 text-[15px] leading-relaxed text-muted-foreground">{role.summary}</p>
+                                <p className="mt-3 flex-1 text-[17px] leading-relaxed text-muted-foreground">{role.summary}</p>
                                 <p className="mt-5 flex flex-wrap gap-2">
                                     {role.focusAreas.slice(0, 3).map((area) => (
-                                        <span key={area} className="rounded-full border px-3 py-1 text-[13px] text-muted-foreground">{area}</span>
+                                        <span key={area} className="rounded-full border px-3 py-1 text-[15px] text-muted-foreground">{area}</span>
                                     ))}
                                 </p>
                                 <span className="mt-6 inline-flex items-center gap-2 text-sm font-medium">
@@ -39,7 +41,7 @@ export function RolesIndex() {
                         {FORMAT_CONTENT.map((format) => (
                             <li key={format.id}>
                                 <p className="font-mono text-xs text-muted-foreground">{format.minutes} minutes</p>
-                                <h3 className="mt-2 text-[15px] font-medium">{format.label}</h3>
+                                <h3 className="mt-2 text-[17px] font-medium">{format.label}</h3>
                                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{format.description}</p>
                             </li>
                         ))}
