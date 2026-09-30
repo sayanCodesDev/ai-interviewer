@@ -74,7 +74,7 @@ function RadioCard({ name, value, checked, onChange, title, meta, description }:
                 <span className="text-sm font-medium">{title}</span>
                 {meta && <span className="font-mono text-xs text-muted-foreground">{meta}</span>}
             </span>
-            {description && <span className="text-[13px] leading-snug text-muted-foreground">{description}</span>}
+            {description && <span className="text-[15px] leading-snug text-muted-foreground">{description}</span>}
         </label>
     );
 }
@@ -186,13 +186,13 @@ export function Setup() {
                 <section>
                     <p className="label-mono text-muted-foreground">Interview setup</p>
                     <h1 className="text-h2 mt-4">Set up your interview.</h1>
-                    <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-muted-foreground">
+                    <p className="mt-4 max-w-xl text-[17px] leading-relaxed text-muted-foreground">
                         Tell us the role and paste the job description. The interviewer builds its questions from it, like a real loop.
                     </p>
 
                     <form onSubmit={handleSubmit} noValidate className="mt-10 grid max-w-xl gap-8">
-                        <div className="grid gap-6 sm:grid-cols-2">
-                            <Field label="Target role" htmlFor="role" error={errors.role}>
+                        <div className="grid gap-6">
+                            <Field label="Target role" htmlFor="role" error={errors.role} className="sm:max-w-sm">
                                 {(control) => (
                                     <Select value={role} onValueChange={setRole}>
                                         <SelectTrigger {...control}>
@@ -209,14 +209,14 @@ export function Setup() {
                                 )}
                             </Field>
 
-                            <fieldset className="grid gap-2">
-                                <legend className="text-sm font-medium">Your level</legend>
-                                <div role="radiogroup" className="flex flex-wrap gap-1.5">
+                            <fieldset className="grid gap-2.5">
+                                <legend className="mb-2.5 text-sm font-medium">Your level</legend>
+                                <div role="radiogroup" className="flex flex-wrap gap-2">
                                     {options.levels.map((l) => (
                                         <label
                                             key={l}
                                             className={cn(
-                                                "cursor-pointer rounded-full border px-3 py-1.5 text-[13px] transition-colors has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-foreground/10 hover:border-foreground/40",
+                                                "cursor-pointer rounded-full border px-4 py-2 text-[15.5px] transition-colors has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-foreground/10 hover:border-foreground/40",
                                                 level === l ? "border-foreground bg-foreground text-background" : "bg-card text-muted-foreground",
                                             )}
                                         >
@@ -375,16 +375,16 @@ export function Setup() {
                                     <li key={step.title} className={cn("grid grid-cols-[1.75rem_1fr_auto] items-baseline gap-3", skipped && "opacity-45")}>
                                         <span className="font-mono text-xs text-muted-foreground">{String(index + 1).padStart(2, "0")}</span>
                                         <div>
-                                            <h2 className="text-[15px] font-medium">{skipped ? "Concepts and trade-offs" : step.title}</h2>
-                                            {step.note && !skipped && <p className="mt-0.5 text-[13px] text-muted-foreground">{step.note}</p>}
-                                            {skipped && <p className="mt-0.5 text-[13px] text-muted-foreground">System design starts at mid-level.</p>}
+                                            <h2 className="text-[17px] font-medium">{skipped ? "Concepts and trade-offs" : step.title}</h2>
+                                            {step.note && !skipped && <p className="mt-0.5 text-[15px] text-muted-foreground">{step.note}</p>}
+                                            {skipped && <p className="mt-0.5 text-[15px] text-muted-foreground">System design starts at mid-level.</p>}
                                         </div>
                                         <span className="font-mono text-xs text-muted-foreground">{step.minutes} min</span>
                                     </li>
                                 );
                             })}
                         </ol>
-                        <p className="mt-6 border-t pt-5 text-[13px] leading-relaxed text-muted-foreground">
+                        <p className="mt-6 border-t pt-5 text-[15px] leading-relaxed text-muted-foreground">
                             When it ends you get a scored report with a transcript, feedback on every part, and a plan for what to practise next.
                         </p>
                     </div>

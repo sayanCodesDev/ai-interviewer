@@ -76,6 +76,30 @@
   --inverse-foreground: #0e0e0c;
 }
 
+/*
+ * Type scale. Larger than Tailwind's defaults on purpose: body copy sits at 17-19px and the smallest UI text at
+ * 13px, so reading a report or a problem statement never strains the eyes. Every page's sizes come from here
+ * (plus the text-display / text-h2 / text-h3 / label-mono utilities below), so the whole site scales from one place.
+ */
+@theme {
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.25rem;
+  --text-sm: 1rem;
+  --text-sm--line-height: 1.5rem;
+  --text-base: 1.125rem;
+  --text-base--line-height: 1.75rem;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.85rem;
+  --text-xl: 1.375rem;
+  --text-xl--line-height: 1.95rem;
+  --text-2xl: 1.625rem;
+  --text-2xl--line-height: 2.15rem;
+  --text-3xl: 2rem;
+  --text-3xl--line-height: 2.4rem;
+  --text-4xl: 2.5rem;
+  --text-4xl--line-height: 2.85rem;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -122,6 +146,7 @@
   --animate-blink: blink 1.05s steps(1, end) infinite;
   --animate-live: live-dot 2s ease-in-out infinite;
   --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+  --animate-marquee: marquee 60s linear infinite;
   --animate-accordion-down: accordion-down 0.35s var(--ease-out-expo);
   --animate-accordion-up: accordion-up 0.3s var(--ease-out-expo);
 }
@@ -144,6 +169,10 @@
 @keyframes live-dot {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
+}
+
+@keyframes marquee {
+  to { transform: translateX(-50%); }
 }
 
 @keyframes shimmer {
@@ -192,32 +221,46 @@
 
 @utility text-display {
   font-family: var(--font-serif);
+  text-wrap: balance;
   font-weight: 400;
-  font-size: clamp(2.75rem, 1.1rem + 7.2vw, 5.5rem);
-  line-height: 1;
+  font-size: clamp(3.1rem, 1.3rem + 7.4vw, 6.25rem);
+  line-height: 0.98;
   letter-spacing: -0.03em;
 }
 
 @utility text-h2 {
   font-family: var(--font-serif);
+  text-wrap: balance;
   font-weight: 400;
-  font-size: clamp(2rem, 1.2rem + 3vw, 3.25rem);
-  line-height: 1.05;
+  font-size: clamp(2.35rem, 1.4rem + 3.3vw, 3.85rem);
+  line-height: 1.04;
   letter-spacing: -0.025em;
 }
 
 @utility text-h3 {
   font-family: var(--font-serif);
+  text-wrap: balance;
   font-weight: 400;
-  font-size: clamp(1.5rem, 1.25rem + 1vw, 1.875rem);
-  line-height: 1.15;
+  font-size: clamp(1.7rem, 1.35rem + 1.1vw, 2.2rem);
+  line-height: 1.12;
   letter-spacing: -0.015em;
+}
+
+/* Paragraph text for marketing pages: comfortably large, never more than ~70 characters a line. */
+@utility text-lede {
+  font-size: clamp(1.1875rem, 1.1rem + 0.35vw, 1.3125rem);
+  line-height: 1.6;
+}
+
+@utility text-body {
+  font-size: 1.125rem;
+  line-height: 1.65;
 }
 
 @utility label-mono {
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  line-height: 1;
+  font-size: 0.78rem;
+  line-height: 1.1;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -286,6 +329,8 @@
     background: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
+    font-size: 1.0625rem;
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;

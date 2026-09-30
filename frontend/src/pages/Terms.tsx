@@ -4,7 +4,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     return (
         <section className="mt-12">
             <h2 className="text-h3">{title}</h2>
-            <div className="mt-4 grid gap-4 text-[15px] leading-relaxed text-muted-foreground">{children}</div>
+            <div className="mt-4 grid gap-4 text-[17px] leading-relaxed text-muted-foreground">{children}</div>
         </section>
     );
 }
@@ -17,12 +17,12 @@ export function Terms() {
                 <h1 className="text-h2 mt-4">Terms of use</h1>
                 <p className="mt-4 text-sm text-muted-foreground">Last updated 26 September 2026</p>
 
-                <p className="mt-8 text-[17px] leading-relaxed text-muted-foreground">
+                <p className="mt-8 text-[19px] leading-relaxed text-muted-foreground">
                     By creating an account or taking an interview you agree to these terms.
                 </p>
 
                 <Section title="What the service is">
-                    <p>AI Interviewer provides simulated technical interviews for practice. The interviewer is an AI and can be wrong. Scores, feedback and study plans are estimates from one conversation, offered as practice feedback. They are not professional advice or an assessment for employment, and no company has endorsed them.</p>
+                    <p>Intervyu provides simulated technical interviews for practice. The interviewer is an AI and can be wrong. Scores, feedback and study plans are estimates from one conversation, offered as practice feedback. They are not professional advice or an assessment for employment, and no company has endorsed them.</p>
                 </Section>
 
                 <Section title="Your account">

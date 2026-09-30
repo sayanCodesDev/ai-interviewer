@@ -268,7 +268,7 @@ export function EditorPanel({ interviewId, mode, problem, title, prompt, problem
                     </Select>
                 )}
 
-                <span className={cn("font-mono text-[13px] tabular-nums transition-colors duration-500", timerTone)} aria-label="Time on this problem">
+                <span className={cn("font-mono text-[15px] tabular-nums transition-colors duration-500", timerTone)} aria-label="Time on this problem">
                     {formatClock(elapsed)}
                 </span>
 
@@ -304,8 +304,8 @@ export function EditorPanel({ interviewId, mode, problem, title, prompt, problem
                 {loadState === "stuck" && (
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-night-sunken px-6 text-center">
                         <TriangleAlert className="size-5 text-night-amber" aria-hidden="true" />
-                        <p className="text-[14px] text-night-foreground">The code editor is taking too long to load.</p>
-                        <p className="max-w-xs text-[13px] text-night-muted">This is usually a slow or interrupted connection. Your answer isn't lost — you can keep talking, or try again.</p>
+                        <p className="text-[16px] text-night-foreground">The code editor is taking too long to load.</p>
+                        <p className="max-w-xs text-[15px] text-night-muted">This is usually a slow or interrupted connection. Your answer isn't lost — you can keep talking, or try again.</p>
                         <Button variant="outline" size="sm" onClick={retryLoad}>
                             <RotateCw /> Retry
                         </Button>

@@ -51,7 +51,7 @@ function Quotes({ items, onJump }: { items: Evidence[]; onJump: (turn: number) =
     return (
         <ul className="mt-3 grid gap-1.5">
             {items.map((e) => (
-                <li key={`${e.turn}-${e.quote}`} className="border-l-2 border-signal pl-3 text-[13.5px] leading-snug text-muted-foreground">
+                <li key={`${e.turn}-${e.quote}`} className="border-l-2 border-signal pl-3 text-[15.5px] leading-snug text-muted-foreground">
                     <span className="italic">“{e.quote}”</span>{" "}
                     <button type="button" onClick={() => onJump(e.turn)} className="whitespace-nowrap text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground print:hidden">
                         see in transcript
@@ -106,8 +106,8 @@ function ProblemCard({ p }: { p: ProblemReport }) {
                 ))}
             </dl>
 
-            {p.feedback && <p className="mt-5 text-[15px] leading-relaxed">{p.feedback}</p>}
-            {p.codeQuality && <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">{p.codeQuality}</p>}
+            {p.feedback && <p className="mt-5 text-[17px] leading-relaxed">{p.feedback}</p>}
+            {p.codeQuality && <p className="mt-3 text-[17px] leading-relaxed text-muted-foreground">{p.codeQuality}</p>}
 
             <div className="mt-5 grid gap-3 rounded-lg bg-secondary/60 p-4 text-sm sm:grid-cols-2">
                 <p><span className="label-mono block text-muted-foreground">Complexity you gave</span>{p.complexity.stated ?? "Not stated"} <span className="text-muted-foreground">· {VERDICT[p.complexity.verdict]}</span></p>
@@ -270,7 +270,7 @@ export function Report() {
                 {/* ------------------------------------------------------------ report states */}
                 {generating && (
                     <div role="status" aria-live="polite" className="mt-12 rounded-xl border bg-card p-8">
-                        <p className="flex items-center gap-3 text-[15px] font-medium">
+                        <p className="flex items-center gap-3 text-[17px] font-medium">
                             <Spinner /> Analysing your interview
                         </p>
                         <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
@@ -312,7 +312,7 @@ export function Report() {
                             <div>
                                 <p className="label-mono text-muted-foreground">{BAND_COPY[report.overall.band] ?? report.overall.band}</p>
                                 <p className="mt-3 max-w-2xl font-serif text-3xl leading-tight tracking-tight sm:text-4xl">{report.overall.headline}</p>
-                                <p className="mt-5 max-w-2xl text-[15px] leading-relaxed text-muted-foreground">{report.summary}</p>
+                                <p className="mt-5 max-w-2xl text-[17px] leading-relaxed text-muted-foreground">{report.summary}</p>
                                 <dl className="mt-7 grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-4">
                                     {[
                                         ["Time", `${Math.round(report.metrics.durationMinutes)} min`],
@@ -327,7 +327,7 @@ export function Report() {
                                     ))}
                                 </dl>
                                 {report.metrics.segmentsAnalysed < report.metrics.segmentsTotal && (
-                                    <p className="mt-5 text-[13px] text-muted-foreground">
+                                    <p className="mt-5 text-[15px] text-muted-foreground">
                                         Note: {report.metrics.segmentsTotal - report.metrics.segmentsAnalysed} part of the interview couldn't be analysed, so this score is based on the rest.
                                     </p>
                                 )}
@@ -341,7 +341,7 @@ export function Report() {
                                 {report.dimensions.map((d) => (
                                     <div key={d.key} className="print:break-inside-avoid">
                                         <div className="flex items-baseline justify-between gap-3">
-                                            <h3 className="text-[15px] font-medium">
+                                            <h3 className="text-[17px] font-medium">
                                                 {d.label}
                                                 {d.objective && <span className="label-mono ml-2 text-muted-foreground">from tests</span>}
                                             </h3>
@@ -362,7 +362,7 @@ export function Report() {
                                 {report.rounds.filter((r) => r.type !== "wrapup" && (r.summary || r.score !== null)).map((r) => (
                                     <article key={r.key} className="rounded-xl border bg-card p-6 print:break-inside-avoid">
                                         <div className="flex items-baseline justify-between gap-3">
-                                            <h3 className="text-[15px] font-medium">{r.title}</h3>
+                                            <h3 className="text-[17px] font-medium">{r.title}</h3>
                                             {r.score !== null && <span className="font-mono text-sm tabular-nums">{r.score}/10</span>}
                                         </div>
                                         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{r.summary}</p>
@@ -395,7 +395,7 @@ export function Report() {
                                 <ul className="grid gap-7">
                                     {report.strengths.map((s) => (
                                         <li key={s.title} className="print:break-inside-avoid">
-                                            <h3 className="text-[15px] font-medium">{s.title}</h3>
+                                            <h3 className="text-[17px] font-medium">{s.title}</h3>
                                             <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{s.detail}</p>
                                             <Quotes items={s.evidence} onJump={jumpTo} />
                                         </li>
@@ -407,7 +407,7 @@ export function Report() {
                                 <ul className="grid gap-7">
                                     {report.improvements.map((s) => (
                                         <li key={s.title} className="print:break-inside-avoid">
-                                            <h3 className="flex items-center gap-2 text-[15px] font-medium">
+                                            <h3 className="flex items-center gap-2 text-[17px] font-medium">
                                                 {s.title}
                                                 {s.priority === 1 && <span className="label-mono rounded-full bg-signal px-2 py-0.5 text-signal-foreground">Top priority</span>}
                                             </h3>
@@ -488,7 +488,7 @@ export function Report() {
                 </section>
 
                 {/* ----------------------------------------------------------------------- footer */}
-                <footer className="border-t pt-8 text-[13px] leading-relaxed text-muted-foreground">
+                <footer className="border-t pt-8 text-[15px] leading-relaxed text-muted-foreground">
                     {report && <p className="max-w-2xl">{report.disclaimer}</p>}
                     <Button variant="ghost" size="sm" className="mt-6 text-muted-foreground print:hidden" onClick={() => setConfirmDelete(true)}>
                         <Trash2 /> Delete this interview

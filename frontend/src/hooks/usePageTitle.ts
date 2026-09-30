@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-const SUFFIX = "AI Interviewer";
+const SUFFIX = "Intervyu";
 
 /** Sets the browser tab title while the calling page is mounted. */
 export function usePageTitle(title: string) {

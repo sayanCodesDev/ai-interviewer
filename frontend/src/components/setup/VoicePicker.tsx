@@ -75,7 +75,7 @@ export function VoicePicker({ voices, value, onChange }: { voices: Voice[]; valu
                     <input type="radio" name="voice" value={v.id} checked={value === v.id} onChange={() => onChange(v.id)} className="sr-only" />
                     <span className="min-w-0 flex-1">
                         <span className="block text-sm font-medium">{v.name}</span>
-                        <span className="block truncate text-[12.5px] text-muted-foreground">{v.description}</span>
+                        <span className="block truncate text-[14px] text-muted-foreground">{v.description}</span>
                     </span>
                     <Button
                         type="button"

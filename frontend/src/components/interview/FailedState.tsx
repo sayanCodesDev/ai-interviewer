@@ -15,7 +15,7 @@ export function FailedState({ message, ended = false, onRetry, onBack, backLabel
             <div className="max-w-md">
                 <p className="label-mono text-night-muted">Connection</p>
                 <h2 className="text-h2 mt-4">{ended ? "This interview has ended." : "We couldn't connect."}</h2>
-                <p className="mt-4 text-[15px] leading-relaxed text-night-muted">
+                <p className="mt-4 text-[17px] leading-relaxed text-night-muted">
                     {message || "Something went wrong while starting your interview."}
                 </p>
                 <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">

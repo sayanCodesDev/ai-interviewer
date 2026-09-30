@@ -52,7 +52,7 @@ export function TopBar({ role, status, elapsedSeconds, plannedMinutes, round, on
         <header className="grid h-14 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-night-line px-4 md:grid-cols-[1fr_auto_1fr]">
             <div className="flex min-w-0 items-center gap-2.5">
                 <LogoMark className="size-6" />
-                <span className="truncate text-[13px] font-medium">{role || "Interview"}</span>
+                <span className="truncate text-[15px] font-medium">{role || "Interview"}</span>
             </div>
 
             <div className="flex items-center gap-4">

@@ -7,7 +7,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     return (
         <section className="mt-12">
             <h2 className="text-h3">{title}</h2>
-            <div className="mt-4 grid gap-4 text-[15px] leading-relaxed text-muted-foreground">{children}</div>
+            <div className="mt-4 grid gap-4 text-[17px] leading-relaxed text-muted-foreground">{children}</div>
         </section>
     );
 }
@@ -21,8 +21,8 @@ export function Privacy() {
                 <h1 className="text-h2 mt-4">Privacy</h1>
                 <p className="mt-4 text-sm text-muted-foreground">Last updated 26 September 2026</p>
 
-                <p className="mt-8 text-[17px] leading-relaxed text-muted-foreground">
-                    AI Interviewer lets you practise technical interviews. This page explains what we collect to do that, who helps us process it, how long we keep it, and how to delete it.
+                <p className="mt-8 text-[19px] leading-relaxed text-muted-foreground">
+                    Intervyu lets you practise technical interviews. This page explains what we collect to do that, who helps us process it, how long we keep it, and how to delete it.
                 </p>
 
                 <Section title="What we collect">

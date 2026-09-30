@@ -9,7 +9,7 @@ export interface EditorPrefs {
 }
 
 const KEY = "editor:prefs";
-const DEFAULTS: EditorPrefs = { fontSize: 14, tabSize: 4, wordWrap: false, minimap: false, theme: "night" };
+const DEFAULTS: EditorPrefs = { fontSize: 15, tabSize: 4, wordWrap: false, minimap: false, theme: "night" };
 
 function read(): EditorPrefs {
     try {

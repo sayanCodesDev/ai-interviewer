@@ -10,7 +10,7 @@ interface ProblemPanelProps {
 
 export function ProblemPanel({ question, number, className, bare = false }: ProblemPanelProps) {
     const statement = question ? (
-        <p className="text-[15px] leading-relaxed whitespace-pre-wrap text-night-foreground/90">{question}</p>
+        <p className="text-[17px] leading-relaxed whitespace-pre-wrap text-night-foreground/90">{question}</p>
     ) : (
         <p className="text-sm leading-relaxed text-night-muted">The interviewer will share a problem here. You can also start writing in the editor.</p>
     );

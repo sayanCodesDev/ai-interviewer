@@ -63,7 +63,7 @@ export function Tile({ kind, label, level, initials, muted = false, connecting =
             )}
         >
             <div className="flex items-center justify-between gap-2 px-4 pt-4">
-                <span className="truncate text-[13px] font-medium">{label}</span>
+                <span className="truncate text-[15px] font-medium">{label}</span>
                 <span className="label-mono flex shrink-0 items-center gap-1.5 text-night-muted">
                     <span
                         className={cn(

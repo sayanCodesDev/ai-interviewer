@@ -31,14 +31,14 @@ export function ProblemPane({ problem, fallbackText, title, number, total, class
                 {problem ? (
                     <>
                         <h2 className="font-serif text-2xl leading-tight tracking-tight">{problem.title}</h2>
-                        <p className="mt-3 text-[15px] leading-relaxed whitespace-pre-wrap text-night-foreground/90">{problem.statement}</p>
+                        <p className="mt-3 text-[17px] leading-relaxed whitespace-pre-wrap text-night-foreground/90">{problem.statement}</p>
 
                         <h3 className="label-mono mt-6 text-night-muted">Constraints</h3>
-                        <ul className="mt-2 grid gap-1 text-[13.5px] text-night-foreground/80">
+                        <ul className="mt-2 grid gap-1 text-[15.5px] text-night-foreground/80">
                             {problem.constraints.map((constraint) => (
                                 <li key={constraint} className="flex gap-2">
                                     <span aria-hidden className="mt-2 size-1 shrink-0 rounded-full bg-night-muted" />
-                                    <span className="font-mono text-[12.5px] leading-relaxed">{constraint}</span>
+                                    <span className="font-mono text-[14px] leading-relaxed">{constraint}</span>
                                 </li>
                             ))}
                         </ul>
@@ -46,14 +46,14 @@ export function ProblemPane({ problem, fallbackText, title, number, total, class
                         <h3 className="label-mono mt-6 text-night-muted">Examples</h3>
                         <div className="mt-2 grid gap-3">
                             {problem.examples.map((example, index) => (
-                                <div key={index} className="rounded-lg border border-night-line bg-night-sunken p-3 font-mono text-[12.5px] leading-relaxed">
+                                <div key={index} className="rounded-lg border border-night-line bg-night-sunken p-3 font-mono text-[14px] leading-relaxed">
                                     <p className="mb-1 text-night-muted">Example {index + 1}</p>
                                     <pre className="whitespace-pre-wrap">{formatInputs(problem.signature.params, example.input)}</pre>
                                     <p className="mt-1.5">
                                         <span className="text-night-muted">output </span>
                                         {formatValue(example.output)}
                                     </p>
-                                    {example.explanation && <p className="mt-1.5 font-sans text-[12.5px] text-night-muted">{example.explanation}</p>}
+                                    {example.explanation && <p className="mt-1.5 font-sans text-[14px] text-night-muted">{example.explanation}</p>}
                                 </div>
                             ))}
                         </div>
@@ -61,7 +61,7 @@ export function ProblemPane({ problem, fallbackText, title, number, total, class
                 ) : (
                     <>
                         {title && <h2 className="font-serif text-2xl leading-tight tracking-tight">{title}</h2>}
-                        <p className={cn("text-[15px] leading-relaxed whitespace-pre-wrap text-night-foreground/90", title && "mt-3")}>
+                        <p className={cn("text-[17px] leading-relaxed whitespace-pre-wrap text-night-foreground/90", title && "mt-3")}>
                             {fallbackText || "The interviewer will share a problem here."}
                         </p>
                     </>

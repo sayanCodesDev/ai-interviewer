@@ -154,7 +154,7 @@ export function Lobby() {
             <div className="app-container py-12 lg:py-16">
                 <p className="label-mono text-muted-foreground">Before you start</p>
                 <h1 className="text-h2 mt-4">Check your sound.</h1>
-                <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-muted-foreground">
+                <p className="mt-4 max-w-xl text-[17px] leading-relaxed text-muted-foreground">
                     The interviewer speaks out loud and listens through your microphone. A minute here saves a rough start.
                 </p>
 
@@ -163,7 +163,7 @@ export function Lobby() {
                 ) : (
                     <div className="mt-10 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                         <section className="rounded-xl border bg-card p-7">
-                            <h2 className="flex items-center gap-2 text-[15px] font-medium">
+                            <h2 className="flex items-center gap-2 text-[17px] font-medium">
                                 <Mic className="size-4 text-muted-foreground" /> Microphone
                             </h2>
 
@@ -187,7 +187,7 @@ export function Lobby() {
                                 </p>
                             )}
                             {mic === "ok" && BLUETOOTH_LIKE.test(micLabel) && (
-                                <div role="note" className="mt-4 flex items-start gap-2.5 rounded-lg border border-[color-mix(in_oklab,var(--night-amber)_50%,transparent)] bg-[color-mix(in_oklab,var(--night-amber)_10%,transparent)] px-3.5 py-3 text-[13px] leading-relaxed">
+                                <div role="note" className="mt-4 flex items-start gap-2.5 rounded-lg border border-[color-mix(in_oklab,var(--night-amber)_50%,transparent)] bg-[color-mix(in_oklab,var(--night-amber)_10%,transparent)] px-3.5 py-3 text-[15px] leading-relaxed">
                                     <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--night-amber)]" aria-hidden />
                                     <p>
                                         You're using a Bluetooth headset ({micLabel}). While its microphone is on, most switch to a phone-call audio mode that sounds
@@ -209,13 +209,13 @@ export function Lobby() {
                             )}
 
                             <div className="mt-7 border-t pt-6">
-                                <h2 className="flex items-center gap-2 text-[15px] font-medium">
+                                <h2 className="flex items-center gap-2 text-[17px] font-medium">
                                     <Volume2 className="size-4 text-muted-foreground" /> Speakers
                                 </h2>
                                 <Button variant="outline" size="sm" className="mt-4" onClick={() => void testSpeakers()} disabled={toneing}>
                                     {toneing ? <Spinner /> : <Volume2 />} Hear your interviewer
                                 </Button>
-                                <p className="mt-3 flex items-start gap-2 text-[13px] text-muted-foreground">
+                                <p className="mt-3 flex items-start gap-2 text-[15px] text-muted-foreground">
                                     <Headphones className="mt-0.5 size-4 shrink-0" /> Headphones stop the interviewer's voice feeding back into your microphone.
                                 </p>
                             </div>
@@ -223,7 +223,7 @@ export function Lobby() {
 
                         <section className="rounded-xl border bg-card p-7">
                             <div className="flex items-baseline justify-between gap-3">
-                                <h2 className="text-[15px] font-medium">Your interview</h2>
+                                <h2 className="text-[17px] font-medium">Your interview</h2>
                                 {meta && <p className="font-mono text-xs text-muted-foreground">{meta.durationMinutes} min</p>}
                             </div>
 
@@ -247,7 +247,7 @@ export function Lobby() {
                                 </div>
                             ) : (
                                 <>
-                                    <p className="mt-2 text-[13px] text-muted-foreground">
+                                    <p className="mt-2 text-[15px] text-muted-foreground">
                                         {meta.role}, {LEVEL_LABEL[meta.level] ?? meta.level}.{" "}
                                         {meta.analysisSource === "llm" ? "Questions are tailored to your job description and background." : "Questions are chosen for the role and your level."}
                                     </p>
@@ -256,8 +256,8 @@ export function Lobby() {
                                             <li key={round.key} className="grid grid-cols-[1.75rem_1fr_auto] items-baseline gap-3">
                                                 <span className="font-mono text-xs text-muted-foreground">{String(index + 1).padStart(2, "0")}</span>
                                                 <div>
-                                                    <p className="text-[15px] font-medium">{round.title}</p>
-                                                    {round.problems ? <p className="mt-0.5 text-[13px] text-muted-foreground">{round.problems} coding problem{round.problems === 1 ? "" : "s"}</p> : null}
+                                                    <p className="text-[17px] font-medium">{round.title}</p>
+                                                    {round.problems ? <p className="mt-0.5 text-[15px] text-muted-foreground">{round.problems} coding problem{round.problems === 1 ? "" : "s"}</p> : null}
                                                 </div>
                                                 <span className="font-mono text-xs text-muted-foreground">{round.minutes} min</span>
                                             </li>

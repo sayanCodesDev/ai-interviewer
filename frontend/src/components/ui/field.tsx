@@ -32,11 +32,11 @@ function Field({ label, htmlFor, hint, error, className, children }: FieldProps)
         "aria-invalid": error ? true : undefined,
       })}
       {error ? (
-        <p id={messageId} role="alert" className="text-[13px] leading-snug text-destructive">
+        <p id={messageId} role="alert" className="text-[15px] leading-snug text-destructive">
           {error}
         </p>
       ) : hint ? (
-        <p id={messageId} className="text-[13px] leading-snug text-muted-foreground">
+        <p id={messageId} className="text-[15px] leading-snug text-muted-foreground">
           {hint}
         </p>
       ) : null}

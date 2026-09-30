@@ -54,7 +54,7 @@ export function Transcript({ entries, rounds, highlight }: TranscriptProps) {
                         <li
                             key={entry.seq}
                             id={`t-${entry.seq}`}
-                            className={cn("grid grid-cols-[3.25rem_5.5rem_1fr] gap-x-3 rounded-md px-2 py-2 text-[15px] leading-relaxed transition-colors duration-700 sm:grid-cols-[3.5rem_6rem_1fr]", highlight === entry.seq && "bg-signal/40")}
+                            className={cn("grid grid-cols-[3.25rem_5.5rem_1fr] gap-x-3 rounded-md px-2 py-2 text-[17px] leading-relaxed transition-colors duration-700 sm:grid-cols-[3.5rem_6rem_1fr]", highlight === entry.seq && "bg-signal/40")}
                         >
                             <span className="pt-0.5 font-mono text-xs text-muted-foreground tabular-nums">{formatOffset(entry.offsetMs)}</span>
                             <span className={cn("pt-0.5 text-xs font-medium", isYou ? "text-foreground" : "text-muted-foreground")}>{isYou ? "You" : "Interviewer"}</span>

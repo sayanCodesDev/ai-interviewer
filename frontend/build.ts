@@ -57,7 +57,7 @@ if (!isSet("VITE_BACKEND_URL")) {
 if (!isSet("VITE_SITE_URL")) {
   console.warn(
     "⚠️  VITE_SITE_URL is not set in frontend/.env.production — canonical URLs, the sitemap and " +
-    "social previews will point at https://ai-interviewer.example.com instead of your domain."
+    "social previews will point at https://intervyu.example.com instead of your domain."
   );
 }
 

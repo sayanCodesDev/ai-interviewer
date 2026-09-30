@@ -63,7 +63,7 @@ export function UserMenu() {
                 aria-label="Account menu"
                 className="flex h-10 items-center gap-2.5 rounded-full border border-border bg-card py-1 pr-3 pl-1 text-sm font-medium transition-colors hover:bg-accent data-[state=open]:bg-accent"
             >
-                <span className="flex size-8 items-center justify-center rounded-full bg-foreground font-mono text-[11px] font-medium text-background">
+                <span className="flex size-8 items-center justify-center rounded-full bg-foreground font-mono text-[12.5px] font-medium text-background">
                     {getInitials(user.name)}
                 </span>
                 <span className="hidden max-w-32 truncate sm:block">{displayName}</span>
@@ -71,7 +71,7 @@ export function UserMenu() {
             <DropdownMenuContent align="end">
                 <DropdownMenuLabel>
                     <p className="text-sm font-medium">{displayName}</p>
-                    <p className="mt-0.5 truncate text-[13px] font-normal text-muted-foreground">{user.email}</p>
+                    <p className="mt-0.5 truncate text-[15px] font-normal text-muted-foreground">{user.email}</p>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
@@ -102,7 +102,7 @@ export function UserMenu() {
                         </DialogDescription>
                     </DialogHeader>
                     <PasswordInput id="delete-password" name="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} aria-label="Password" />
-                    {deleteError && <p role="alert" className="text-[13px] text-destructive">{deleteError}</p>}
+                    {deleteError && <p role="alert" className="text-[15px] text-destructive">{deleteError}</p>}
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
                         <Button type="submit" variant="destructive" disabled={!password || deleting}>{deleting ? "Deleting…" : "Delete everything"}</Button>

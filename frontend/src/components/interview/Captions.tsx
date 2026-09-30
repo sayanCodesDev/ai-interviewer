@@ -38,7 +38,7 @@ export function CaptionStrip({ captions }: { captions: CaptionItem[] }) {
                 <p
                     key={caption.id}
                     className={cn(
-                        "line-clamp-2 text-[14px] leading-snug transition-opacity duration-300",
+                        "line-clamp-2 text-[16px] leading-snug transition-opacity duration-300",
                         caption.role === "interviewer" ? "text-night-foreground" : "text-night-muted italic",
                         !caption.final && "opacity-80",
                     )}

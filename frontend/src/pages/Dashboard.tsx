@@ -137,15 +137,15 @@ export function Dashboard() {
                                             )}
                                         </div>
                                         <div className="min-w-0">
-                                            <p className="truncate text-[15px] font-medium">{item.role}</p>
-                                            <p className="mt-1 text-[13px] text-muted-foreground capitalize">
+                                            <p className="truncate text-[17px] font-medium">{item.role}</p>
+                                            <p className="mt-1 text-[15px] text-muted-foreground capitalize">
                                                 {item.level} · {item.format} · {new Date(item.createdAt).toLocaleDateString(undefined, { dateStyle: "medium" })}
                                                 {item.durationSeconds ? ` · ${formatClock(item.durationSeconds)}` : ""}
                                             </p>
                                         </div>
                                         <div className="ml-auto hidden text-right sm:block">
                                             <p className={cn("text-sm", item.band === "Interview-ready" || item.band === "Close" ? "font-medium" : "text-muted-foreground")}>{item.band ?? statusText(item)}</p>
-                                            {item.band && <p className="mt-1 text-[13px] text-muted-foreground">{statusText(item)}</p>}
+                                            {item.band && <p className="mt-1 text-[15px] text-muted-foreground">{statusText(item)}</p>}
                                         </div>
                                     </Link>
                                     <Button variant="ghost" size="icon-sm" aria-label={`Delete interview: ${item.role}`} className="relative z-10 text-muted-foreground" onClick={() => setPendingDelete(item)}>

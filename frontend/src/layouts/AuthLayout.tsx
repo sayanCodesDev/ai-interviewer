@@ -7,10 +7,10 @@ import { useSimulatedLevel } from "@/hooks/useSimulatedLevel";
 import { EASE_OUT_EXPO } from "@/lib/motion";
 
 const EXPECT = [
-    { title: "A quick hello", text: "Introduce yourself and your background." },
-    { title: "Live coding problems", text: "Solve data structures and algorithms problems in an editor beside the conversation." },
-    { title: "Follow-up questions", text: "Talk through time and space complexity, and whether there's a better approach." },
-    { title: "Spoken feedback", text: "The interviewer closes with how it went and what to sharpen." },
+    { title: "Set it up around your job", text: "Your role, level and the job description, plus your resume and GitHub." },
+    { title: "Talk it through", text: "Questions about your background and the projects you've built, with real follow-ups." },
+    { title: "Code and sketch", text: "Coding problems with hidden tests, and a whiteboard for system design." },
+    { title: "A scored report", text: "A score out of 100, feedback on every part and a study plan, about a minute later." },
 ];
 
 function AuthAside() {
@@ -31,8 +31,8 @@ function AuthAside() {
                         >
                             <span className="font-mono text-xs text-night-muted">{String(index + 1).padStart(2, "0")}</span>
                             <div>
-                                <h2 className="font-serif text-[26px] leading-tight tracking-tight">{item.title}</h2>
-                                <p className="mt-2 max-w-sm text-sm leading-relaxed text-night-muted">{item.text}</p>
+                                <h2 className="font-serif text-[30px] leading-tight tracking-tight">{item.title}</h2>
+                                <p className="mt-2 max-w-sm text-[16px] leading-relaxed text-night-muted">{item.text}</p>
                             </div>
                         </m.li>
                     ))}
@@ -43,7 +43,7 @@ function AuthAside() {
                 <div className="h-14 text-signal opacity-80">
                     <Waveform level={level} maxBars={56} />
                 </div>
-                <p className="label-mono mt-6 text-night-muted">Microphone required · No camera</p>
+                <p className="label-mono mt-6 text-night-muted">Microphone recommended · No camera · Type if you prefer</p>
             </div>
         </aside>
     );
@@ -67,7 +67,7 @@ export function AuthLayout({ title, subtitle, children, footer }: AuthLayoutProp
 
                 <div className="mx-auto flex w-full max-w-[400px] flex-1 flex-col justify-center py-12">
                     <h1 className="text-h2">{title}</h1>
-                    <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">{subtitle}</p>
+                    <p className="mt-3 text-[17px] leading-relaxed text-muted-foreground">{subtitle}</p>
                     <div className="mt-8">{children}</div>
                     <p className="mt-8 text-sm text-muted-foreground">{footer}</p>
                 </div>

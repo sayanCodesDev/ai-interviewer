@@ -33,7 +33,7 @@ function Pre({ label, children, tone }: { label: string; children: React.ReactNo
             <p className="label-mono mb-1 text-night-muted">{label}</p>
             <pre
                 className={cn(
-                    "max-h-32 overflow-auto rounded-md border border-night-line bg-night-sunken px-3 py-2 font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap",
+                    "max-h-32 overflow-auto rounded-md border border-night-line bg-night-sunken px-3 py-2 font-mono text-[14px] leading-relaxed whitespace-pre-wrap",
                     tone === "bad" && "border-night-red/40",
                     tone === "good" && "border-signal/30",
                 )}
@@ -126,14 +126,14 @@ export function TestPanel({ problem, runResult, submitResult, running, submittin
                         aria-selected={tab === id}
                         onClick={() => setTab(id)}
                         className={cn(
-                            "relative px-3 py-2 text-[13px] transition-colors",
+                            "relative px-3 py-2 text-[15px] transition-colors",
                             tab === id ? "text-night-foreground after:absolute after:inset-x-3 after:bottom-0 after:h-px after:bg-signal" : "text-night-muted hover:text-night-foreground",
                         )}
                     >
                         {label}
                     </button>
                 ))}
-                <span className="ml-auto flex items-center gap-2 pr-2 font-mono text-[12px] text-night-muted" aria-live="polite">
+                <span className="ml-auto flex items-center gap-2 pr-2 font-mono text-[13.5px] text-night-muted" aria-live="polite">
                     {(running || submitting) && <Spinner className="size-3.5" />}
                     {running ? "Running…" : submitting ? "Grading…" : stale && latest ? "Code changed since this result" : summary}
                 </span>
@@ -142,7 +142,7 @@ export function TestPanel({ problem, runResult, submitResult, running, submittin
             <div role="tabpanel" className="min-h-0 flex-1 overflow-auto p-3">
                 {tab === "cases" && (
                     <div className="grid gap-3">
-                        {problemLine && <p role="alert" className="text-[13px] font-medium text-night-red">{problemLine}. See the Output tab.</p>}
+                        {problemLine && <p role="alert" className="text-[15px] font-medium text-night-red">{problemLine}. See the Output tab.</p>}
                         <div className="flex flex-wrap gap-1.5">
                             {problem.examples.map((_, i) => {
                                 const id = `e${i}`;
@@ -154,7 +154,7 @@ export function TestPanel({ problem, runResult, submitResult, running, submittin
                                         onClick={() => setSelected(id)}
                                         aria-pressed={selected === id}
                                         className={cn(
-                                            "flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[12.5px] transition-colors",
+                                            "flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[14px] transition-colors",
                                             selected === id ? "border-night-muted bg-night-raised" : "border-night-line text-night-muted hover:text-night-foreground",
                                         )}
                                     >
@@ -182,14 +182,14 @@ export function TestPanel({ problem, runResult, submitResult, running, submittin
                                 <p className="label-mono mb-1.5 text-night-muted">Hidden tests</p>
                                 <ul className="grid gap-1 sm:grid-cols-2">
                                     {hiddenCases.map((c) => (
-                                        <li key={c.id} className="flex items-center gap-2 rounded-md border border-night-line px-2.5 py-1.5 text-[12.5px]">
+                                        <li key={c.id} className="flex items-center gap-2 rounded-md border border-night-line px-2.5 py-1.5 text-[14px]">
                                             {STATUS_ICON[c.status]}
                                             <span className="min-w-0 flex-1 truncate">{c.label ?? c.id}</span>
                                             <span className="text-night-muted">{STATUS_WORD[c.status]}</span>
                                         </li>
                                     ))}
                                 </ul>
-                                <p className="mt-2 text-[12px] text-night-muted">Hidden tests show only their name and result, like a real assessment.</p>
+                                <p className="mt-2 text-[13.5px] text-night-muted">Hidden tests show only their name and result, like a real assessment.</p>
                             </div>
                         )}
                     </div>
@@ -206,16 +206,16 @@ export function TestPanel({ problem, runResult, submitResult, running, submittin
                         {(latest?.cases ?? []).filter((c) => c.error).map((c) => (
                             <Pre key={`${c.id}-error`} label={`${c.label ?? c.id}: error`} tone="bad">{c.error}</Pre>
                         ))}
-                        {!latest && <p className="text-[13px] text-night-muted">Run your code to see anything it prints, and any errors, here.</p>}
+                        {!latest && <p className="text-[15px] text-night-muted">Run your code to see anything it prints, and any errors, here.</p>}
                         {latest && !latest.compileOutput && !latest.stderr && !latest.message && !latest.cases.some((c) => c.stdout || c.error) && (
-                            <p className="text-[13px] text-night-muted">Nothing was printed and there were no errors.</p>
+                            <p className="text-[15px] text-night-muted">Nothing was printed and there were no errors.</p>
                         )}
                     </div>
                 )}
 
                 {tab === "custom" && (
                     <div className="grid gap-3">
-                        <p className="text-[13px] text-night-muted">Try the function on your own input. Each value is JSON, in the order of the parameters.</p>
+                        <p className="text-[15px] text-night-muted">Try the function on your own input. Each value is JSON, in the order of the parameters.</p>
                         {problem.signature.params.map((param, i) => (
                             <label key={param.name} className="grid gap-1">
                                 <span className="label-mono text-night-muted">{param.name} <span className="normal-case opacity-70">({param.type})</span></span>
@@ -224,11 +224,11 @@ export function TestPanel({ problem, runResult, submitResult, running, submittin
                                     onChange={(event) => setInputs((current) => current.map((v, j) => (j === i ? event.target.value : v)))}
                                     rows={2}
                                     spellCheck={false}
-                                    className="w-full resize-y rounded-md border border-night-line bg-night-sunken px-3 py-2 font-mono text-[12.5px] outline-none focus-visible:border-signal/60"
+                                    className="w-full resize-y rounded-md border border-night-line bg-night-sunken px-3 py-2 font-mono text-[14px] outline-none focus-visible:border-signal/60"
                                 />
                             </label>
                         ))}
-                        {inputError && <p role="alert" className="text-[13px] text-night-red">{inputError}</p>}
+                        {inputError && <p role="alert" className="text-[15px] text-night-red">{inputError}</p>}
                         <div className="flex items-center gap-3">
                             <Button variant="outline" size="sm" onClick={runCustom} disabled={customRunning}>
                                 {customRunning && <Spinner />}

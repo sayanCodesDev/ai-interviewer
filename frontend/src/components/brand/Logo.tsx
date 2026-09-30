@@ -20,9 +20,9 @@ export function LogoMark({ className, animated = false }: { className?: string; 
 
 export function Logo({ to = "/", className, wordmark = true }: { to?: string; className?: string; wordmark?: boolean }) {
     return (
-        <Link to={to} aria-label="AI Interviewer home" className={cn("inline-flex items-center gap-2.5", className)}>
+        <Link to={to} aria-label="Intervyu home" className={cn("inline-flex items-center gap-2.5", className)}>
             <LogoMark />
-            {wordmark && <span className="font-serif text-[22px] leading-none tracking-tight">AI Interviewer</span>}
+            {wordmark && <span className="font-serif text-[24px] leading-none tracking-tight">Intervyu</span>}
         </Link>
     );
 }
