@@ -45,7 +45,7 @@ export function Formats() {
                         <p className="label-mono text-muted-foreground">Formats</p>
                         <h2 className="text-h2 mt-4">Twenty minutes, or the full loop.</h2>
                         <p className="text-lede mt-5 text-muted-foreground">
-                            Four shapes of interview, each timed like the real one. Intervyu suggests one for your level, and you can always pick another.
+                            Each format is timed like the real interview it's modelled on. Intervyu suggests one for your level, and you can always pick another.
                         </p>
                     </div>
                     <ul aria-label="Round types" className="flex max-w-md flex-wrap gap-x-5 gap-y-2">

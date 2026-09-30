@@ -31,7 +31,7 @@ export function RolesMarquee() {
         <section aria-labelledby="roles-marquee-label" className="border-y py-10 sm:py-12">
             <div className="page-container">
                 <p id="roles-marquee-label" className="label-mono text-muted-foreground">
-                    Mock interviews for {roles.length} engineering roles
+                    Mock interviews by role
                 </p>
             </div>
             <div className="group mt-7 flex overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_8%,#000_92%,transparent)]">

@@ -26,11 +26,11 @@ export function MockInterviews() {
                         <p className="label-mono text-muted-foreground">Mock interviews</p>
                         <h2 className="text-h2 mt-4">See the interview before you take it.</h2>
                         <p className="text-lede mt-5 max-w-xl text-muted-foreground">
-                            {ROLE_CONTENT.length} roles, each with its own real loop — sample questions, coding topics and what a strong answer covers.
+                            Each role has its own loop: sample questions, coding topics and what a strong answer covers.
                         </p>
                     </div>
                     <Link to="/mock-interviews" className="group inline-flex shrink-0 items-center gap-2 text-sm font-medium">
-                        See all {ROLE_CONTENT.length} roles
+                        See all roles
                         <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
                     </Link>
                 </div>

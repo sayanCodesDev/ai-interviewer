@@ -6,7 +6,6 @@ import { ProductWindow } from "@/components/landing/ProductWindow";
 import { useStartInterview } from "@/components/landing/useStartInterview";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { FORMAT_CONTENT, PRODUCT_STATS } from "@/content/roles.generated";
 
 /** One line of the headline, revealed from behind a mask. */
 function Line({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
@@ -32,14 +31,6 @@ function Emphasis({ children }: { children: React.ReactNode }) {
         </span>
     );
 }
-
-// Real numbers from the interviewer's own banks (exported by backend/scripts/export-role-content.ts), never invented.
-const FACTS = [
-    `${PRODUCT_STATS.roles} engineering roles`,
-    `${PRODUCT_STATS.problems} coding problems`,
-    `${PRODUCT_STATS.languages.length} languages`,
-    `${FORMAT_CONTENT.length} interview formats`,
-];
 
 export function Hero() {
     const { start, checking } = useStartInterview();
@@ -88,19 +79,6 @@ export function Hero() {
                         </a>
                     </div>
                 </div>
-
-                <ul
-                    aria-label="At a glance"
-                    className="enter-fade mt-10 grid grid-cols-2 gap-x-6 gap-y-2.5 border-t pt-6 font-mono text-[13px] tracking-wide text-muted-foreground uppercase sm:flex sm:flex-wrap"
-                    style={{ "--enter-delay": "0.7s" } as React.CSSProperties}
-                >
-                    {FACTS.map((fact, index) => (
-                        <li key={fact} className="flex items-center gap-6">
-                            {index > 0 && <span aria-hidden className="hidden h-3 w-px bg-border sm:block" />}
-                            {fact}
-                        </li>
-                    ))}
-                </ul>
 
                 <div
                     className="enter-fade-up mt-14 sm:mt-20"

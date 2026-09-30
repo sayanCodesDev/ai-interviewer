@@ -125,7 +125,7 @@ function llmsTxt(): string {
         "## Pages",
         "",
         `- [Home](${abs("/")}): what ${SITE_NAME} is and how an interview works`,
-        `- [Mock interviews by role](${abs("/mock-interviews")}): all ${ROLE_CONTENT.length} roles`,
+        `- [Mock interviews by role](${abs("/mock-interviews")}): every role, with what its interview covers`,
         ...ROLE_CONTENT.map((role) => `- [${role.role} mock interview](${abs(`/mock-interviews/${role.slug}`)}): ${role.summary}`),
         `- [Privacy](${abs("/privacy")})`,
         `- [Terms](${abs("/terms")})`,

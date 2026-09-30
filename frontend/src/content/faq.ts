@@ -23,7 +23,7 @@ export const FAQ: ReadonlyArray<{ q: string; a: string }> = [
     },
     {
         q: "Which interview formats can I choose?",
-        a: `There are ${FORMAT_CONTENT.length}: ${formats.join(", ")}. Intervyu suggests one for your level (the full loop for senior and staff engineers) and you can pick any of them.`,
+        a: `You can choose a ${formats.slice(0, -1).join(", a ")} or a ${formats.at(-1)}. Intervyu suggests one for your level (the full loop for senior and staff engineers) and you can pick any of them.`,
     },
     {
         q: "Is there a whiteboard for system design?",
@@ -35,7 +35,7 @@ export const FAQ: ReadonlyArray<{ q: string; a: string }> = [
     },
     {
         q: "Which roles can I practise for?",
-        a: `${roles.length} engineering roles: ${roles.join(", ")}. Each has its own page showing what the interview covers and sample questions.`,
+        a: `${roles.slice(0, -1).join(", ")} and ${roles.at(-1)}. Each has its own page showing what the interview covers and sample questions.`,
     },
     {
         q: "What do I get at the end?",

@@ -149,7 +149,7 @@ function TalkOrTypeVisual() {
                 {typed}
                 <span className="ml-px inline-block h-[1em] w-[2px] translate-y-[0.15em] animate-blink bg-foreground" />
             </div>
-            <p className="text-[14.5px] text-muted-foreground">8 interviewer voices · 5 English accents · live captions</p>
+            <p className="text-[14.5px] text-muted-foreground">A choice of interviewer voices and accents, with live captions</p>
         </div>
     );
 }
@@ -264,8 +264,8 @@ export function Bento() {
 
                     <TileShell
                         eyebrow="Editor"
-                        title="Five languages."
-                        text="Starter code for each, run the examples or your own input, and every language keeps its own draft."
+                        title="Code in your language."
+                        text="JavaScript, TypeScript, Python, C++ or Java, with starter code for each. Run the examples or your own input, and every language keeps its own draft."
                         className="md:col-span-2 lg:col-span-4"
                     >
                         <LanguagesVisual />

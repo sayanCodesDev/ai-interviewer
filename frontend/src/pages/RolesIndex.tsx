@@ -47,7 +47,7 @@ export function RolesIndex() {
                         ))}
                     </ul>
                     <p className="mt-10 text-sm text-muted-foreground">
-                        {PRODUCT_STATS.problems} coding problems, each with hidden tests, in {PRODUCT_STATS.languages.join(", ")}.
+                        Coding problems with hidden tests, in {PRODUCT_STATS.languages.join(", ")}.
                     </p>
                 </section>
             </div>

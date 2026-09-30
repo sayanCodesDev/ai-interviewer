@@ -67,12 +67,12 @@ const webApplication = {
     featureList: [
         "Spoken mock interviews with an AI interviewer that follows up on your answers",
         "Questions built from a job description, resume and GitHub profile",
-        `${PRODUCT_STATS.problems} coding problems with hidden tests in ${PRODUCT_STATS.languages.join(", ")}`,
+        `Coding problems with hidden tests in ${PRODUCT_STATS.languages.join(", ")}`,
         "Problem difficulty that adapts to how the last problem went",
         "A whiteboard for system design interviews",
-        `${FORMAT_CONTENT.length} interview formats, from a 20-minute screen to a full loop`,
+        "Interview formats from a 20-minute screen to a full loop",
         "A scored report with evidence from your transcript and a prioritised study plan",
-        `Mock interviews for ${PRODUCT_STATS.roles} engineering roles`,
+        "Mock interviews for each engineering role",
     ],
 };
 
@@ -131,7 +131,7 @@ export function seoFor(pathname: string): Seo {
 
     if (path === "/mock-interviews") {
         return {
-            title: `Mock Interview Practice for ${ROLE_CONTENT.length} Engineering Roles | ${SITE_NAME}`,
+            title: `AI Mock Interview Practice by Engineering Role | ${SITE_NAME}`,
             description: `AI mock interviews for ${ROLE_CONTENT.map((r) => r.role).slice(0, 3).join(", ")} and more: what each interview covers, with sample questions.`,
             canonical: "/mock-interviews",
             noindex: false,

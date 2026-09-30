@@ -90,7 +90,7 @@ export function RolePage() {
                 <section className="mt-20 border-t pt-16">
                     <h2 className="text-h3">Coding and system design</h2>
                     <p className="mt-4 max-w-2xl text-[17px] leading-relaxed text-muted-foreground">
-                        The coding rounds draw from {PRODUCT_STATS.problems} problems with hidden tests, in {PRODUCT_STATS.languages.join(", ")}. For {role.role.toLowerCase()} roles the interviewer leans on {role.codingTopics.map((t) => TOPIC_LABEL[t] ?? t).join(", ").toLowerCase()}.
+                        The coding rounds draw from a bank of problems with hidden tests, in {PRODUCT_STATS.languages.join(", ")}. For {role.role.toLowerCase()} roles the interviewer leans on {role.codingTopics.map((t) => TOPIC_LABEL[t] ?? t).join(", ").toLowerCase()}.
                     </p>
                     {role.designPrompts.length > 0 && (
                         <ul className="mt-8 grid gap-5 md:grid-cols-2">

@@ -4,7 +4,6 @@ import { FinalCta } from "@/components/landing/FinalCta";
 import { Formats } from "@/components/landing/Formats";
 import { Hero } from "@/components/landing/Hero";
 import { HowItWorks } from "@/components/landing/HowItWorks";
-import { JobFit } from "@/components/landing/JobFit";
 import { MockInterviews } from "@/components/landing/MockInterviews";
 import { ReportShowcase } from "@/components/landing/ReportShowcase";
 import { RolesMarquee } from "@/components/landing/RolesMarquee";
@@ -19,7 +18,6 @@ export function Landing() {
                 <Hero />
                 <RolesMarquee />
                 <HowItWorks />
-                <JobFit />
                 <Bento />
                 <Formats />
                 <ReportShowcase />

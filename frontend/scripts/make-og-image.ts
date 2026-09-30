@@ -36,7 +36,7 @@ p{position:absolute;left:72px;top:418px;width:740px;font-size:26px;line-height:1
 <div class="brand">${MARK}Intervyu</div>
 <h1>Do the interview<br><em>before the interview.</em></h1>
 <p>AI mock interviews for software engineers. Talk it through, code against real tests, get a scored report.</p>
-<div class="tag">Coding · System design · Behavioral · 15 roles</div>
+<div class="tag">Coding · System design · Behavioral · Scored report</div>
 <div class="wave">${[70, 130, 210, 290, 180, 250, 110, 190, 90].map((h) => `<i style="height:${h}px"></i>`).join("")}</div>
 </body></html>`;
 

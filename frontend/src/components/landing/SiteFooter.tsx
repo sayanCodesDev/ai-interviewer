@@ -5,7 +5,6 @@ import { ROLE_CONTENT } from "@/content/roles.generated";
 
 const PRODUCT = [
     { href: "/#how-it-works", label: "How it works" },
-    { href: "/#setup", label: "Setup" },
     { href: "/#features", label: "Features" },
     { href: "/#formats", label: "Formats" },
     { href: "/#report", label: "The report" },
