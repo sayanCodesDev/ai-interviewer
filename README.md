@@ -1,10 +1,10 @@
-# AI Interviewer
+# Intervyu
 
-A technical interview you can practise out loud. An AI interviewer talks with you over voice, asks questions shaped by the job you're preparing for, lets you solve real coding problems in a live editor with hidden tests, and finishes with a scored report.
+AI mock interviews for software engineers. Intervyu's interviewer talks with you over voice, asks questions shaped by the job you're preparing for, lets you solve real coding problems in a live editor with hidden tests and sketch system designs on a whiteboard, and finishes with a scored report and a study plan.
 
 It is practice feedback, not a hiring decision, and the product says so.
 
-<img src="docs/screenshots/landingPage.png" width="820" alt="Landing page: 'A technical interview that actually talks back.'">
+<img src="docs/screenshots/landingPage.png" width="820" alt="Intervyu's landing page: 'Do the interview before the interview.'">
 
 ## A real interview, not a chat window
 

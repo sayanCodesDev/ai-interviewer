@@ -1,4 +1,4 @@
-# Deploying AI Interviewer
+# Deploying Intervyu
 
 Three moving parts: a **static website** (Netlify, Cloudflare Pages, nginx), an **API server** (Node, needs Docker and UDP), and **PostgreSQL** (Neon or your own). Two services you rent: a language model (Groq by default) and Deepgram for speech.
 
@@ -19,7 +19,7 @@ The ones you must set:
 | API | `WEBRTC_PUBLIC_IP`, `WEBRTC_PORT_MIN/MAX` | See [WebRTC](#webrtc-and-firewalls) |
 | API | `TRUST_PROXY` | `1` behind nginx or a load balancer, so rate limits see real client IPs |
 | Site | `VITE_BACKEND_URL` | The API's `https://` origin |
-| Site | `VITE_SITE_URL` | The website's public origin. Without it canonicals, the sitemap and link previews point at `ai-interviewer.example.com`. The build warns. |
+| Site | `VITE_SITE_URL` | The website's public origin. Without it canonicals, the sitemap, `llms.txt` and link previews point at `intervyu.example.com`, which search engines will not credit to your site. The build warns. |
 
 ## Database
 
