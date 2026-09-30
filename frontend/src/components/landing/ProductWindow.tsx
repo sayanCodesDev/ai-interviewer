@@ -195,7 +195,7 @@ function useDemoAudio(step: DemoStep, index: number, on: boolean, playing: boole
 /**
  * A living picture of the interview room, from joining the call to the goodbye: the introduction, a question about
  * the candidate's own project, a coding problem with its tests, a follow-up, a design sketched on the whiteboard and
- * the wrap-up. Muted by default; with the sound on it plays the real interviewer voice.
+ * the wrap-up. Muted by default; the title bar's toggle plays it in the real interviewer voice.
  */
 export function ProductWindow({ className }: { className?: string }) {
     const ref = useRef<HTMLDivElement>(null);
@@ -328,13 +328,6 @@ export function ProductWindow({ className }: { className?: string }) {
                     </div>
                 </div>
             </div>
-
-            <p className="label-mono mt-6 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-muted-foreground">
-                The interview room · an example session ·
-                <button type="button" onClick={toggleSound} className="label-mono underline decoration-border underline-offset-4 transition-colors hover:text-foreground hover:decoration-foreground">
-                    {soundOn ? "Mute it" : "Play it with sound"}
-                </button>
-            </p>
         </div>
     );
 }
