@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Tile } from "@/components/audio/Tile";
 import { GithubMark } from "@/components/brand/GithubMark";
 import { CODE_LENGTH, useTypewriter } from "@/components/landing/MiniEditor";
-import { EditorPane, ProblemCard, WhiteboardPane } from "@/components/landing/ProductWindow";
+import { EditorPane, ProblemCard, WhiteboardPane } from "@/components/landing/roomParts";
 import { FORMAT_CONTENT } from "@/content/roles.generated";
 import { useSequence, useTypedText } from "@/hooks/useSequence";
 import { useSimulatedLevel } from "@/hooks/useSimulatedLevel";
@@ -50,7 +50,7 @@ export function SetupScene({ active }: SceneProps) {
     const jd = useTypedText(JD, active && step >= 3, 70);
 
     return (
-        <div className="flex h-full flex-col gap-4 overflow-hidden p-5 sm:p-7">
+        <div className="flex h-full flex-col gap-3 overflow-hidden p-4 sm:gap-4 sm:p-7">
             <p className="label-mono text-night-muted">Interview setup</p>
 
             <div className="grid gap-4 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
@@ -81,7 +81,11 @@ export function SetupScene({ active }: SceneProps) {
                 <div className="rounded-md border border-night-line bg-night-raised px-3 py-2.5">
                     <div className="flex items-baseline justify-between text-[14.5px]">
                         {step >= 2 ? <span>{STANDARD.label}</span> : <span className="text-night-muted">Pick a level first</span>}
-                        {step >= 2 && <span className="font-mono text-[12.5px] text-night-muted">{STANDARD.minutes} min · suggested for your level</span>}
+                        {step >= 2 && (
+                            <span className="font-mono text-[12.5px] text-night-muted">
+                                {STANDARD.minutes} min<span className="hidden sm:inline"> · suggested for your level</span>
+                            </span>
+                        )}
                     </div>
                     <div className="mt-2.5 flex h-1.5 gap-1 overflow-hidden rounded-full">
                         {STANDARD.rounds.map((round, index) => (
@@ -106,15 +110,15 @@ export function SetupScene({ active }: SceneProps) {
                 </div>
             </Field>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-                <div className="flex h-10 items-center gap-2 rounded-md border border-night-line bg-night-raised px-3 text-[13.5px]">
-                    <FileText className="size-4 text-night-muted" />
-                    {step >= 4 ? "resume.pdf" : <span className="text-night-muted">Resume (optional)</span>}
-                    {step >= 4 && <Check className="ml-auto size-4 text-signal" />}
+            <div className="grid grid-cols-2 gap-3">
+                <div className="flex h-10 min-w-0 items-center gap-2 rounded-md border border-night-line bg-night-raised px-3 text-[13.5px]">
+                    <FileText className="size-4 shrink-0 text-night-muted" />
+                    {step >= 4 ? <span className="truncate">resume.pdf</span> : <span className="truncate text-night-muted">Resume</span>}
+                    {step >= 4 && <Check className="ml-auto size-4 shrink-0 text-signal" />}
                 </div>
-                <div className="flex h-10 items-center gap-2 rounded-md border border-night-line bg-night-raised px-3 text-[13.5px]">
-                    <GithubMark className="size-4 text-night-muted" />
-                    {step >= 5 ? <span className="truncate">github.com/ada-lovelace</span> : <span className="text-night-muted">GitHub profile</span>}
+                <div className="flex h-10 min-w-0 items-center gap-2 rounded-md border border-night-line bg-night-raised px-3 text-[13.5px]">
+                    <GithubMark className="size-4 shrink-0 text-night-muted" />
+                    {step >= 5 ? <span className="truncate">github.com/ada-lovelace</span> : <span className="truncate text-night-muted">GitHub</span>}
                     {step >= 5 && <Check className="ml-auto size-4 shrink-0 text-signal" />}
                 </div>
             </div>
@@ -135,7 +139,7 @@ export function SetupScene({ active }: SceneProps) {
                             <span className="text-night-foreground/90">
                                 {STANDARD.rounds.length} rounds, built from your job
                             </span>
-                            <span className="rounded-md bg-signal px-4 py-2 font-medium text-signal-foreground">Start interview</span>
+                            <span className="shrink-0 rounded-md bg-signal px-4 py-2 font-medium whitespace-nowrap text-signal-foreground">Start interview</span>
                         </m.span>
                     )}
                 </AnimatePresence>
@@ -244,7 +248,8 @@ const DIMENSIONS = [
 const OVERALL = 78;
 const RING = 2 * Math.PI * 54;
 
-function CountUp({ to, active }: { to: number; active: boolean }) {
+/** A number counting up to `to` while `active`, easing out; `to` at once under reduced motion. */
+export function CountUp({ to, active }: { to: number; active: boolean }) {
     const reduce = useReducedMotion() ?? false;
     const [value, setValue] = useState(reduce ? to : 0);
 
