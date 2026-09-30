@@ -1,12 +1,12 @@
 import { FAQ } from "@/content/faq";
 import { BEHAVIORAL_SAMPLES, FORMAT_CONTENT, PRODUCT_STATS, ROLE_CONTENT } from "@/content/roles.generated";
 
-export const SITE_NAME = "AI Interviewer";
+export const SITE_NAME = "Intervyu";
 
 /** The public origin, used for canonical URLs and the sitemap. Set VITE_SITE_URL for the deployed build. */
 // A build-time global, on purpose: see src/lib/config.ts.
 const configuredSiteUrl: string | undefined = typeof __VITE_SITE_URL__ !== "undefined" ? __VITE_SITE_URL__ : undefined;
-export const SITE_URL: string = (configuredSiteUrl || "https://ai-interviewer.example.com").replace(/\/+$/, "");
+export const SITE_URL: string = (configuredSiteUrl || "https://intervyu.example.com").replace(/\/+$/, "");
 
 export interface Seo {
     title: string;
@@ -17,14 +17,64 @@ export interface Seo {
     jsonLd: object[];
 }
 
-const HOME_TITLE = "AI Interviewer: practise technical interviews out loud, with a scored report";
+/** One sentence that says what Intervyu is, reused wherever a short description is needed. */
+export const TAGLINE = "AI mock interviews for software engineers";
+
+// Titles stay under ~60 characters and descriptions under ~160, so search results show them whole.
+const HOME_TITLE = "Intervyu: AI Mock Interviews for Software Engineers";
 const HOME_DESCRIPTION =
-    "Take a realistic technical interview with an AI interviewer. Talk it through, solve coding problems in a live editor, and get a scored report with a transcript and a study plan.";
+    "Practise real technical interviews out loud with an AI interviewer: live coding with hidden tests, system design on a whiteboard, and a scored report.";
 
-const abs = (path: string) => `${SITE_URL}${path === "/" ? "" : path}`;
+export const abs = (path: string) => `${SITE_URL}${path === "/" ? "" : path}`;
 
-const organization = { "@context": "https://schema.org", "@type": "Organization", name: SITE_NAME, url: SITE_URL, logo: `${SITE_URL}/favicon.svg` };
-const website = { "@context": "https://schema.org", "@type": "WebSite", name: SITE_NAME, url: SITE_URL };
+const LOGO = `${SITE_URL}/icon-512.png`;
+
+const organization = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "@id": `${SITE_URL}/#organization`,
+    name: SITE_NAME,
+    url: SITE_URL,
+    logo: { "@type": "ImageObject", url: LOGO, width: 512, height: 512 },
+    description: `${SITE_NAME}: ${TAGLINE}.`,
+};
+
+const website = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "@id": `${SITE_URL}/#website`,
+    name: SITE_NAME,
+    url: SITE_URL,
+    description: HOME_DESCRIPTION,
+    inLanguage: "en",
+    publisher: { "@id": `${SITE_URL}/#organization` },
+};
+
+const webApplication = {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "@id": `${SITE_URL}/#app`,
+    name: SITE_NAME,
+    url: SITE_URL,
+    description: HOME_DESCRIPTION,
+    applicationCategory: "EducationalApplication",
+    applicationSubCategory: "Interview preparation",
+    operatingSystem: "Any",
+    browserRequirements: "A modern web browser and a microphone",
+    inLanguage: "en",
+    image: `${SITE_URL}/og.png`,
+    publisher: { "@id": `${SITE_URL}/#organization` },
+    featureList: [
+        "Spoken mock interviews with an AI interviewer that follows up on your answers",
+        "Questions built from a job description, resume and GitHub profile",
+        `${PRODUCT_STATS.problems} coding problems with hidden tests in ${PRODUCT_STATS.languages.join(", ")}`,
+        "Problem difficulty that adapts to how the last problem went",
+        "A whiteboard for system design interviews",
+        `${FORMAT_CONTENT.length} interview formats, from a 20-minute screen to a full loop`,
+        "A scored report with evidence from your transcript and a prioritised study plan",
+        `Mock interviews for ${PRODUCT_STATS.roles} engineering roles`,
+    ],
+};
 
 function faqPage(items: ReadonlyArray<{ q: string; a: string }>) {
     return {
@@ -42,6 +92,15 @@ function breadcrumbs(trail: Array<{ name: string; path: string }>) {
     };
 }
 
+/** The role pages as an ordered list, so search engines see the collection and not just the index page. */
+const roleList = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: "Mock interviews by engineering role",
+    numberOfItems: ROLE_CONTENT.length,
+    itemListElement: ROLE_CONTENT.map((role, i) => ({ "@type": "ListItem", position: i + 1, name: `${role.role} mock interview`, url: abs(`/mock-interviews/${role.slug}`) })),
+};
+
 /** Questions and answers shown on a role page, also published as structured data. */
 export function roleFaq(slug: string): Array<{ q: string; a: string }> {
     const role = ROLE_CONTENT.find((r) => r.slug === slug);
@@ -51,54 +110,40 @@ export function roleFaq(slug: string): Array<{ q: string; a: string }> {
 
 export const PUBLIC_PATHS = ["/", "/mock-interviews", ...ROLE_CONTENT.map((r) => `/mock-interviews/${r.slug}`), "/privacy", "/terms"];
 
+function article(word: string): "a" | "an" {
+    return /^(?:SDE|[AEIOU])/.test(word) ? "an" : "a";
+}
+
+/** A search-result title for a role page: under ~60 characters where the role name allows. */
+function roleTitle(role: string): string {
+    const name = role.replace(/\s*\(.*\)$/, "");
+    const full = `${name} Mock Interview Practice with AI | ${SITE_NAME}`;
+    return full.length <= 62 ? full : `${name} Mock Interview Practice | ${SITE_NAME}`;
+}
+
 /** SEO for every route. Pure, so the browser and the build-time prerender always agree. */
 export function seoFor(pathname: string): Seo {
     const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
 
     if (path === "/") {
-        return {
-            title: HOME_TITLE,
-            description: HOME_DESCRIPTION,
-            canonical: "/",
-            noindex: false,
-            jsonLd: [
-                organization,
-                website,
-                {
-                    "@context": "https://schema.org",
-                    "@type": "SoftwareApplication",
-                    name: SITE_NAME,
-                    applicationCategory: "EducationalApplication",
-                    operatingSystem: "Any (web browser)",
-                    description: HOME_DESCRIPTION,
-                    url: SITE_URL,
-                    featureList: [
-                        "Voice interview with an AI interviewer",
-                        `${PRODUCT_STATS.problems} coding problems with hidden tests in ${PRODUCT_STATS.languages.join(", ")}`,
-                        "Questions tailored to a job description, resume and GitHub profile",
-                        "Scored report with transcript and study plan",
-                    ],
-                },
-                faqPage(FAQ),
-            ],
-        };
+        return { title: HOME_TITLE, description: HOME_DESCRIPTION, canonical: "/", noindex: false, jsonLd: [organization, website, webApplication, faqPage(FAQ)] };
     }
 
     if (path === "/mock-interviews") {
         return {
-            title: "AI mock interviews for every engineering role | AI Interviewer",
-            description: `Practise a realistic technical interview for ${ROLE_CONTENT.map((r) => r.role).slice(0, 4).join(", ")} and more. See what each interview covers and the questions you'll be asked.`,
+            title: `Mock Interview Practice for ${ROLE_CONTENT.length} Engineering Roles | ${SITE_NAME}`,
+            description: `AI mock interviews for ${ROLE_CONTENT.map((r) => r.role).slice(0, 3).join(", ")} and more: what each interview covers, with sample questions.`,
             canonical: "/mock-interviews",
             noindex: false,
-            jsonLd: [breadcrumbs([{ name: "Home", path: "/" }, { name: "Mock interviews", path: "/mock-interviews" }])],
+            jsonLd: [breadcrumbs([{ name: "Home", path: "/" }, { name: "Mock interviews", path: "/mock-interviews" }]), roleList],
         };
     }
 
     const role = ROLE_CONTENT.find((r) => path === `/mock-interviews/${r.slug}`);
     if (role) {
         return {
-            title: `${role.role} mock interview: practise with an AI interviewer | AI Interviewer`,
-            description: `${role.summary} Practise real ${role.role} interview questions out loud, solve coding problems in a live editor and get a scored report.`.slice(0, 300),
+            title: roleTitle(role.role),
+            description: `Practise ${article(role.role)} ${role.role} interview out loud with an AI interviewer. Covers ${role.focusAreas[0]} and more, with live coding and a scored report.`,
             canonical: path,
             noindex: false,
             jsonLd: [
@@ -109,10 +154,10 @@ export function seoFor(pathname: string): Seo {
     }
 
     if (path === "/privacy") {
-        return { title: "Privacy | AI Interviewer", description: "What AI Interviewer collects, why, who processes it, how long it is kept and how to delete it.", canonical: "/privacy", noindex: false, jsonLd: [] };
+        return { title: `Privacy | ${SITE_NAME}`, description: `What ${SITE_NAME} collects, why, who processes it, how long it is kept and how to delete it.`, canonical: "/privacy", noindex: false, jsonLd: [] };
     }
     if (path === "/terms") {
-        return { title: "Terms of use | AI Interviewer", description: "The terms for using AI Interviewer, including what the practice feedback is and is not.", canonical: "/terms", noindex: false, jsonLd: [] };
+        return { title: `Terms of use | ${SITE_NAME}`, description: `The terms for using ${SITE_NAME}, including what the practice feedback is and is not.`, canonical: "/terms", noindex: false, jsonLd: [] };
     }
 
     // Sign-in, the app itself and anything unknown: useful to people, useless in search results.

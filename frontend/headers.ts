@@ -75,6 +75,14 @@ export function buildHeaders(input: HeaderInput): string {
     immutable,
     "/og.png",
     "  Cache-Control: public, max-age=86400",
+    // Icons and the manifest keep stable names (browsers and search engines look for them there), so a day, not forever.
+    "/icon-*",
+    "  Cache-Control: public, max-age=86400",
+    "/apple-touch-icon.png",
+    "  Cache-Control: public, max-age=86400",
+    "/site.webmanifest",
+    "  Cache-Control: public, max-age=86400",
+    "  Content-Type: application/manifest+json",
     "",
   ].join("\n");
 }
