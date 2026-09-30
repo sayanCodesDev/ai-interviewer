@@ -91,7 +91,6 @@ export function Hero() {
                     >
                         <ProductWindow />
                     </m.div>
-                    <p className="label-mono mt-6 text-center text-muted-foreground">The interview room · an example session</p>
                 </div>
             </div>
         </section>

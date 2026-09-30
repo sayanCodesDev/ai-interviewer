@@ -10,6 +10,9 @@ const MONACO_ROOT = join(import.meta.dir, "..", "node_modules", "monaco-editor",
 // serving in dev, or the whiteboard opens with no CSS at all: an unstyled, unusably laid-out toolbar.
 const EXCALIDRAW_ROOT = join(import.meta.dir, "..", "node_modules", "@excalidraw", "excalidraw", "dist", "prod");
 
+// The landing demo's voice clips live in public/demo, which the production build copies to dist; in dev they are served from here.
+const DEMO_AUDIO_ROOT = join(import.meta.dir, "..", "public", "demo");
+
 function staticAssetRoute(root: string) {
   return async (req: Request) => {
     const prefix = new URL(req.url).pathname.split("/")[1]!;
@@ -26,6 +29,7 @@ const server = serve({
   routes: {
     "/monaco/*": staticAssetRoute(MONACO_ROOT),
     "/excalidraw/*": staticAssetRoute(EXCALIDRAW_ROOT),
+    "/demo/*": staticAssetRoute(DEMO_AUDIO_ROOT),
 
     // Serve index.html for all unmatched routes.
     "/*": index,

@@ -214,7 +214,7 @@ export function CodeScene({ active }: SceneProps) {
                 </p>
             </div>
             <div className="min-h-0 min-w-0">
-                <EditorPane count={reduce || step >= 1 ? CODE_LENGTH : typed} phase={step >= 1 ? "tests" : "code"} />
+                <EditorPane count={reduce || step >= 1 ? CODE_LENGTH : typed} testing={step >= 1} />
             </div>
         </div>
     );

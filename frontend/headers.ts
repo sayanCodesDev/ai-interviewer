@@ -80,6 +80,9 @@ export function buildHeaders(input: HeaderInput): string {
     "  Cache-Control: public, max-age=86400",
     "/apple-touch-icon.png",
     "  Cache-Control: public, max-age=86400",
+    // The demo's voice clips: regenerated rarely, and only fetched when a visitor turns the sound on.
+    "/demo/*",
+    "  Cache-Control: public, max-age=604800",
     "/site.webmanifest",
     "  Cache-Control: public, max-age=86400",
     "  Content-Type: application/manifest+json",
