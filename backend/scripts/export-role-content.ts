@@ -4,7 +4,7 @@
 import "../src/testing/setup";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { FORMAT_PRESETS } from "../src/interview/plan";
+import { FORMAT_PRESETS, ROUND_TITLES } from "../src/interview/plan";
 import { ALL_PROBLEMS } from "../src/interview/problems";
 import { BEHAVIORAL_BANK, ROLE_BANKS } from "../src/interview/roleBanks";
 
@@ -21,7 +21,11 @@ const roles = ROLE_BANKS.map((bank) => ({
     designPrompts: bank.design.map((d) => ({ title: d.title, prompt: d.prompt })),
 }));
 
-const formats = Object.entries(FORMAT_PRESETS).map(([id, p]) => ({ id, label: p.label, minutes: p.minutes, description: p.description }));
+// The rounds too, so the landing page can draw each format's timeline exactly as the interviewer runs it.
+const formats = Object.entries(FORMAT_PRESETS).map(([id, p]) => ({
+    id, label: p.label, minutes: p.minutes, description: p.description,
+    rounds: p.rounds.map((r) => ({ type: r.type, title: ROUND_TITLES[r.type], minutes: r.minutes, count: r.count })),
+}));
 const behavioral = BEHAVIORAL_BANK.slice(0, 5).map((b) => ({ topic: b.topic, question: b.question }));
 const stats = {
     problems: ALL_PROBLEMS.length,

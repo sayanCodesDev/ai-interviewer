@@ -1699,25 +1699,153 @@ export const FORMAT_CONTENT = [
         "id": "quick",
         "label": "Quick screen",
         "minutes": 20,
-        "description": "The shape of a recruiter or hiring-manager phone screen: introductions, your background, and one coding problem — a first filter, not a deep technical bar."
+        "description": "The shape of a recruiter or hiring-manager phone screen: introductions, your background, and one coding problem — a first filter, not a deep technical bar.",
+        "rounds": [
+            {
+                "type": "intro",
+                "title": "Introduction",
+                "minutes": 2,
+                "count": 1
+            },
+            {
+                "type": "background",
+                "title": "Background and projects",
+                "minutes": 3,
+                "count": 2
+            },
+            {
+                "type": "coding",
+                "title": "Coding",
+                "minutes": 12,
+                "count": 1
+            },
+            {
+                "type": "wrapup",
+                "title": "Wrap-up",
+                "minutes": 3,
+                "count": 2
+            }
+        ]
     },
     {
         "id": "standard",
         "label": "Standard loop",
         "minutes": 45,
-        "description": "The shape of a single onsite interviewer's slot: background, two coding problems, technical questions from the job description, and behavioral — one round of a real loop, not the whole day."
+        "description": "The shape of a single onsite interviewer's slot: background, two coding problems, technical questions from the job description, and behavioral — one round of a real loop, not the whole day.",
+        "rounds": [
+            {
+                "type": "intro",
+                "title": "Introduction",
+                "minutes": 3,
+                "count": 1
+            },
+            {
+                "type": "background",
+                "title": "Background and projects",
+                "minutes": 6,
+                "count": 2
+            },
+            {
+                "type": "coding",
+                "title": "Coding",
+                "minutes": 18,
+                "count": 2
+            },
+            {
+                "type": "technical",
+                "title": "Technical deep-dive",
+                "minutes": 9,
+                "count": 3
+            },
+            {
+                "type": "behavioral",
+                "title": "Behavioral",
+                "minutes": 6,
+                "count": 2
+            },
+            {
+                "type": "wrapup",
+                "title": "Wrap-up",
+                "minutes": 3,
+                "count": 2
+            }
+        ]
     },
     {
         "id": "full",
         "label": "Full loop",
         "minutes": 75,
-        "description": "The shape of a senior or final-round loop: the standard round plus a third coding problem and a system-design discussion, the way a bar-raiser or staff-level round runs."
+        "description": "The shape of a senior or final-round loop: the standard round plus a third coding problem and a system-design discussion, the way a bar-raiser or staff-level round runs.",
+        "rounds": [
+            {
+                "type": "intro",
+                "title": "Introduction",
+                "minutes": 3,
+                "count": 1
+            },
+            {
+                "type": "background",
+                "title": "Background and projects",
+                "minutes": 7,
+                "count": 3
+            },
+            {
+                "type": "coding",
+                "title": "Coding",
+                "minutes": 27,
+                "count": 3
+            },
+            {
+                "type": "technical",
+                "title": "Technical deep-dive",
+                "minutes": 14,
+                "count": 4
+            },
+            {
+                "type": "system_design",
+                "title": "System design",
+                "minutes": 14,
+                "count": 1
+            },
+            {
+                "type": "behavioral",
+                "title": "Behavioral",
+                "minutes": 6,
+                "count": 2
+            },
+            {
+                "type": "wrapup",
+                "title": "Wrap-up",
+                "minutes": 4,
+                "count": 2
+            }
+        ]
     },
     {
         "id": "drill",
         "label": "Coding drill",
         "minutes": 30,
-        "description": "Not a real interview format: pure practice, the way a LeetCode grind session runs. Four data-structures-and-algorithms problems back to back, with a quick complexity question after each."
+        "description": "Not a real interview format: pure practice, the way a LeetCode grind session runs. Four data-structures-and-algorithms problems back to back, with a quick complexity question after each.",
+        "rounds": [
+            {
+                "type": "intro",
+                "title": "Introduction",
+                "minutes": 1,
+                "count": 1
+            },
+            {
+                "type": "coding",
+                "title": "Coding",
+                "minutes": 26,
+                "count": 4
+            },
+            {
+                "type": "wrapup",
+                "title": "Wrap-up",
+                "minutes": 3,
+                "count": 2
+            }
+        ]
     }
 ] as const;
 
