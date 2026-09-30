@@ -8,7 +8,7 @@
  * Run it after editing a line in demoScript.ts; the MP3s and the generated file are committed.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { DEMO, DEMO_VOICES } from "../src/components/landing/demoScript";
@@ -32,6 +32,12 @@ function durationMs(file: string, bytes: number): number {
         // Not macOS: fall back to the arithmetic, which is exact for a constant-bit-rate MP3.
     }
     return Math.round((bytes * 8 * 1000) / BIT_RATE);
+}
+
+// Clips for lines that are gone (or no longer spoken) are removed, so nothing stale is published.
+const spoken = new Set(DEMO.filter((step) => step.speaker).map((step) => `${step.id}.mp3`));
+for (const file of readdirSync(outDir)) {
+    if (file.endsWith(".mp3") && !spoken.has(file)) rmSync(path.join(outDir, file));
 }
 
 const durations: Record<string, number> = {};

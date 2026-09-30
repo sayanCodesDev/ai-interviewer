@@ -11,6 +11,9 @@
 
 export type DemoChapter = "setup" | "interview" | "report";
 export type DemoView = "title" | "setup" | "connecting" | "talk" | "code" | "tests" | "design" | "report";
+/** The parts of the report the report chapter scrolls to, in page order. */
+export const REPORT_SECTIONS = ["score", "skills", "code", "plan"] as const;
+export type ReportSection = (typeof REPORT_SECTIONS)[number];
 
 export interface DemoStep {
     id: string;
@@ -24,6 +27,8 @@ export interface DemoStep {
     clock?: number;
     /** The least time the step needs on screen for its animation (filling the form, typing the code, drawing), in ms. */
     minMs: number;
+    /** In the report chapter: the part of the report scrolled into view while this line is spoken. */
+    section?: ReportSection;
 }
 
 export const CHAPTERS: ReadonlyArray<{ id: DemoChapter; label: string; title: string }> = [
@@ -48,7 +53,7 @@ export const DEMO: readonly DemoStep[] = [
         minMs: 11500,
     },
 
-    { id: "title-interview", chapter: "interview", speaker: null, text: "Step 2 of 3", view: "title", minMs: 1900 },
+    { id: "title-interview", chapter: "interview", speaker: "narrator", text: "Now, here's a glimpse of the interview.", view: "title", minMs: 1900 },
     { id: "join", chapter: "interview", speaker: null, text: "Connecting to your interviewer…", view: "connecting", round: "Round 1 of 7 · Introduction", clock: 0, minMs: 1600 },
     {
         id: "greet",
@@ -110,21 +115,22 @@ export const DEMO: readonly DemoStep[] = [
         clock: m(9, 52),
         minMs: 7200,
     },
+    // Submitted: the hidden tests run and pass on screen, without a word, and the interview flows straight on.
     {
         id: "tests",
         chapter: "interview",
-        speaker: "ai",
-        text: "All fourteen hidden tests passed. Nicely done.",
+        speaker: null,
+        text: "",
         view: "tests",
         round: "Round 3 of 7 · Coding",
         clock: m(16, 5),
-        minMs: 3400,
+        minMs: 3200,
     },
     {
         id: "design",
         chapter: "interview",
         speaker: "ai",
-        text: "For the last part, sketch how you'd deliver a million webhooks a day without ever processing one twice.",
+        text: "Nice work. For the last part, sketch how you'd deliver a million webhooks a day without ever processing one twice.",
         view: "design",
         round: "Round 5 of 7 · System design",
         clock: m(38, 30),
@@ -141,13 +147,41 @@ export const DEMO: readonly DemoStep[] = [
         minMs: 0,
     },
 
-    { id: "title-report", chapter: "report", speaker: null, text: "Step 3 of 3", view: "title", minMs: 1900 },
+    { id: "title-report", chapter: "report", speaker: "narrator", text: "About a minute later, your report is ready.", view: "title", minMs: 1900 },
     {
-        id: "report",
+        id: "report-score",
         chapter: "report",
         speaker: "narrator",
-        text: "About a minute later, your report is ready: a score out of 100, feedback on every skill with quotes from what you said, and a study plan in priority order.",
+        text: "It opens with your score out of 100, how ready you are, and a summary of how it went.",
         view: "report",
-        minMs: 9000,
+        section: "score",
+        minMs: 4000,
+    },
+    {
+        id: "report-skills",
+        chapter: "report",
+        speaker: "narrator",
+        text: "Every skill is scored, with quotes from what you actually said as the evidence.",
+        view: "report",
+        section: "skills",
+        minMs: 4000,
+    },
+    {
+        id: "report-code",
+        chapter: "report",
+        speaker: "narrator",
+        text: "Your code is reviewed line by line, next to the intended solution.",
+        view: "report",
+        section: "code",
+        minMs: 4000,
+    },
+    {
+        id: "report-plan",
+        chapter: "report",
+        speaker: "narrator",
+        text: "And it ends with a study plan in priority order. Practise any topic again in one click.",
+        view: "report",
+        section: "plan",
+        minMs: 4500,
     },
 ];
