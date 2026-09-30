@@ -286,26 +286,20 @@
 }
 
 @layer components {
-  .logo-bar {
-    transform-box: fill-box;
-    transform-origin: center;
-    transition: transform 500ms var(--ease-out-expo);
+  /* The mark's voice waves pulse outward on hover, and while the mark stands in for a loading page. */
+  a:hover > .logo-mark .logo-wave-1,
+  .logo-mark[data-animated="true"] .logo-wave-1 {
+    animation: logo-wave 1.2s ease-in-out infinite;
   }
-
-  a:hover > .logo-mark .logo-bar-1 { transform: scaleY(1.8); }
-  a:hover > .logo-mark .logo-bar-2 { transform: scaleY(0.55); }
-  a:hover > .logo-mark .logo-bar-3 { transform: scaleY(1.5); }
-
-  .logo-mark[data-animated="true"] .logo-bar {
-    animation: logo-bar 1.1s ease-in-out infinite;
+  a:hover > .logo-mark .logo-wave-2,
+  .logo-mark[data-animated="true"] .logo-wave-2 {
+    animation: logo-wave 1.2s ease-in-out 0.18s infinite;
   }
-  .logo-mark[data-animated="true"] .logo-bar-2 { animation-delay: 0.15s; }
-  .logo-mark[data-animated="true"] .logo-bar-3 { animation-delay: 0.3s; }
 }
 
-@keyframes logo-bar {
-  0%, 100% { transform: scaleY(0.55); }
-  50% { transform: scaleY(1.6); }
+@keyframes logo-wave {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
 }
 
 @layer base {
