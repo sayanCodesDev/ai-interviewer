@@ -296,6 +296,17 @@ export const directives = {
             "No marker.",
         ),
 
+    /** The last reply asked nothing and did not move on, which left both people waiting: go on, as a person would. */
+    carryOn: (view: { ask: string; again?: boolean; time: string }) =>
+        lines(
+            "CURRENT STEP: Your last reply did not ask anything, so the candidate is sitting in silence waiting for your next question.",
+            view.again && "You were told this a moment ago and still did not ask it. This time say only the question, nothing before it.",
+            view.ask,
+            "Reply with just that question, in one or two short sentences, ending with a question mark. Do not thank them, do not repeat or sum up your last reply, and do not say you are moving on or continuing.",
+            view.time,
+            "No marker.",
+        ),
+
     forceAdvance: (view: { time: string }) =>
         lines("CURRENT STEP: No answer for a long time. In one short sentence say that's fine and you'll move on, then end with [[ADVANCE]].", view.time),
 

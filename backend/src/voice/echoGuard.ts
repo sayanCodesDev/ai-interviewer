@@ -6,8 +6,19 @@
  *
  * Echo is easy to recognise because it repeats what was just said. This remembers the last stretch of the
  * interviewer's speech and reports when a transcript is mostly a replay of it.
+ *
+ * Words alone can't tell echo from a person, though: asked "want me to rephrase the question or give you more time?",
+ * a candidate answers "give me more time". What can tell them apart is when the speech began. Echo is heard while the
+ * interviewer is speaking (its last words a moment after); a reply begins once the interviewer has stopped. Speech that
+ * started after that moment is the candidate, whatever words it uses.
  */
 const WINDOW_MS = 25_000;
+/**
+ * How long after the interviewer's audio stops speech can still be its echo: the end of the browser's playback buffer plus
+ * recognition catching up on the last word. A person's reply starts later than this, and its first words take longer still
+ * to be recognised.
+ */
+export const ECHO_TAIL_MS = 1_000;
 
 /** Edit distance, for words the recogniser spells a little differently each time ("Thalia", "Talia", "Telia"). */
 function distance(a: string, b: string): number {
@@ -63,34 +74,48 @@ function editsToFind(haystack: string[], needle: string[]): number {
     return best;
 }
 
-/** How many edits still count as "the same words": none for three words, one in four or five, two in six to eight, and so on. */
-const allowedEdits = (length: number) => Math.floor(length * 0.34);
+/**
+ * How many edits still count as "the same words": none for three words or fewer, one in four or five, two in six to eight,
+ * and so on. (Three words used to allow one, so "more time, please" was taken for an echo of "give you more time".)
+ */
+const allowedEdits = (length: number) => (length <= 3 ? 0 : Math.floor(length * 0.34));
 
 export class EchoGuard {
     private spoken: Array<{ at: number; words: string[] }> = [];
+    /** When the interviewer's audio last stopped, or null while it is speaking (or has yet to say anything). */
+    private stoppedAt: number | null = null;
 
-    constructor(private readonly now: () => number = Date.now) {}
+    constructor(private readonly now: () => number = Date.now, private readonly tailMs = ECHO_TAIL_MS) {}
 
     /** Remember something the interviewer just said (or is about to say). */
     noteSpoken(text: string): void {
         const list = words(text);
         if (list.length === 0) return;
         this.spoken.push({ at: this.now(), words: list });
+        this.stoppedAt = null;
         this.prune();
+    }
+
+    /** The interviewer's audio has stopped: played to the end, or cut off. */
+    noteStopped(): void {
+        if (this.stoppedAt === null) this.stoppedAt = this.now();
     }
 
     /** Forget everything, e.g. when the call restarts. */
     reset(): void {
         this.spoken = [];
+        this.stoppedAt = null;
     }
 
     /**
      * Whether this transcript is mostly the interviewer's own recent speech coming back through the microphone.
      * Text shorter than `minWords` is never judged; the default of three is for answers, two is for the first words of
      * speech that has only just begun (an exact repeat of two words just spoken is far more likely echo than a person).
+     * `heardFrom` is when this stretch of speech was first heard: speech that began after the interviewer stopped is a person.
      */
-    isEcho(transcript: string, minWords = 3): boolean {
+    isEcho(transcript: string, minWords = 3, heardFrom?: number): boolean {
         this.prune();
+        if (heardFrom !== undefined && this.stoppedAt !== null && heardFrom - this.stoppedAt > this.tailMs) return false;
         const heard = words(transcript);
         if (heard.length < minWords || heard.length < 2 || this.spoken.length === 0) return false;
 

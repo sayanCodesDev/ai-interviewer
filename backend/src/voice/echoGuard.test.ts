@@ -7,8 +7,10 @@ const GREETING = "Hi Sam, I'm Thalia, your interviewer for the Backend Engineer 
 function guard() {
     let now = 0;
     const echo = new EchoGuard(() => now);
-    return { echo, advance: (ms: number) => { now += ms; } };
+    return { echo, advance: (ms: number) => { now += ms; }, now: () => now };
 }
+
+const NUDGE = "No rush. Want me to rephrase the question or give you more time?";
 
 describe("EchoGuard", () => {
     test("recognises the interviewer's own words coming back through the microphone", () => {
@@ -94,5 +96,48 @@ describe("EchoGuard", () => {
         const { echo } = guard();
         echo.noteSpoken("What is the time and space complexity of your solution, and why?");
         assert.equal(echo.isEcho("The time and space complexity is O of n because we visit each element once and store counts in a map"), false);
+    });
+
+    // From a real interview: the check-in above was asked again every half minute for seven minutes, because every answer to it
+    // ("give me more time", "rephrase the question") was taken for the interviewer's own voice and thrown away.
+    test("speech that began after the interviewer stopped is the candidate, even in the interviewer's own words", () => {
+        const { echo, advance, now } = guard();
+        echo.noteSpoken(NUDGE);
+        advance(4_000);
+        echo.noteStopped();
+        advance(1_500);
+        for (const answer of ["Give me more time.", "Rephrase the question.", "Yes, rephrase the question.", "Please rephrase the question."]) {
+            assert.equal(echo.isEcho(answer, 3, now()), false, answer);
+            assert.equal(echo.isEcho(answer, 2, now()), false, `${answer} (as it starts)`);
+        }
+    });
+
+    test("echo is still caught while the interviewer speaks, and for its last words just after", () => {
+        const { echo, advance, now } = guard();
+        echo.noteSpoken(NUDGE);
+        advance(2_000);
+        const duringSpeech = now();
+        assert.equal(echo.isEcho("rephrase the question or give you more time", 3, duringSpeech), true, "heard while speaking");
+        advance(2_000);
+        echo.noteStopped();
+        advance(1_200);
+        assert.equal(echo.isEcho("rephrase the question or give you more time", 3, duringSpeech), true, "began while speaking, finished recognising after");
+        assert.equal(echo.isEcho("give you more time", 3, now() - 900), true, "the last words, a moment after the audio stopped");
+    });
+
+    test("speaking again makes echo possible again", () => {
+        const { echo, advance, now } = guard();
+        echo.noteSpoken(NUDGE);
+        echo.noteStopped();
+        advance(5_000);
+        echo.noteSpoken("Could you walk me through your approach?");
+        assert.equal(echo.isEcho("could you walk me through", 3, now()), true);
+    });
+
+    test("three words must match exactly: one different word in three is a person", () => {
+        const { echo } = guard();
+        echo.noteSpoken(NUDGE);
+        assert.equal(echo.isEcho("More time, please."), false);
+        assert.equal(echo.isEcho("rephrase the question"), true, "an exact run is still echo while the interviewer speaks");
     });
 });

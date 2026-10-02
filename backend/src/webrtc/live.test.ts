@@ -66,9 +66,12 @@ function brain(overrides: (directive: string) => string | null = () => null) {
         if (/CURRENT STEP: Follow-up on/.test(directive)) return "What is the time complexity of your solution?";
         if (/Close the interview/.test(directive)) return "Thanks Sam, that was a pleasure. [[END]]";
         if (/CURRENT STEP: The call dropped/.test(directive)) return "Welcome back, let's continue.";
-        if (/Follow-up turns used so far: \d of \d/.test(directive) || /Exchanges so far/.test(directive)) {
-            return /may not ask any more follow-ups|That is enough questions/.test(directive) ? "Thanks, that covers it. [[ADVANCE]]" : "Interesting, tell me more about that.";
+        // Like the real interviewer: a follow-up question while it may still ask one, and the marker once it is told to close.
+        // Every reply to an answer begins "Okay.", which the tests count to know which reply they are at.
+        if (/Follow-ups used: \d+ of \d+/.test(directive) || /Exchanges so far/.test(directive)) {
+            return /may not ask any more follow-ups|That is enough questions/.test(directive) ? "Okay. Thanks, that covers it. [[ADVANCE]]" : "Okay. What made you choose that?";
         }
+        if (/Your last reply did not ask anything/.test(directive)) return "So what made you choose that?";
         return "Okay.";
     };
 }
@@ -94,7 +97,7 @@ afterEach(async () => {
     setLlmForTesting(null);
 });
 
-async function setup(format: "quick" | "standard" = "quick", options: { llm?: FakeLlm; reconnectWindowMs?: number; transitionBeatMs?: number; rateLimitWaitMs?: number } = {}) {
+async function setup(format: "quick" | "standard" = "quick", options: { llm?: FakeLlm; reconnectWindowMs?: number; transitionBeatMs?: number; rateLimitWaitMs?: number; echoTailMs?: number } = {}) {
     const role = "Backend Engineer";
     const level = "mid" as const;
     const created = await prisma.interview.create({
@@ -119,6 +122,7 @@ async function setup(format: "quick" | "standard" = "quick", options: { llm?: Fa
         reconnectWindowMs: options.reconnectWindowMs,
         transitionBeatMs: options.transitionBeatMs ?? 120,
         rateLimitWaitMs: options.rateLimitWaitMs ?? 20,
+        echoTailMs: options.echoTailMs,
         onFinished: (id, info) => finished.push({ id, ...info }),
     });
     running.push(live);
@@ -289,7 +293,7 @@ async function until(condition: () => boolean, ms = 3_000) {
 describe("LiveInterview: the interview follows what has been heard", () => {
     /**
      * The introduction closes on its third answer: it always gets a follow-up, and here the scripted interviewer
-     * ("Okay.") uses both. So its reply to that third answer is the one that closes it.
+     * ("Okay. What made you choose that?") uses both. So its reply to that third answer is the one that closes it.
      */
     const INTRO_ANSWERS = 3;
     /** Brings the interview to just before the introduction is closed: every answer but the last given. */
@@ -333,8 +337,11 @@ describe("LiveInterview: the interview follows what has been heard", () => {
     });
 
     test("an acknowledgement after a statement is not answered, and does not stop the move", async () => {
-        const { voice, live } = await afterFirstAnswer();
-        // The interviewer's last words ("Okay.") were not a question, so "right" needs no reply.
+        const ctx = await setup("quick", { transitionBeatMs: 400, llm: new FakeLlm(brain((d) => (/Follow-ups used/.test(d) ? "Okay, go ahead." : null))) });
+        const voice = await ctx.connect();
+        await ctx.say(voice, ANSWER);
+        const live = ctx.live;
+        // The interviewer's last words ("Okay, go ahead.") were not a question, so "right" needs no reply.
         const spokenBefore = voice.spoken.length;
         await ctx_say(voice, live, "right");
         assert.equal(voice.spoken.length, spokenBefore);
@@ -810,5 +817,50 @@ describe("approximateSpoken", () => {
         assert.equal(approximateSpoken(sentences, 0.6), "First sentence is here. Second sentence is here.");
         assert.equal(approximateSpoken(sentences, 1), sentences.join(" "));
         assert.equal(approximateSpoken([], 0.5), "");
+    });
+});
+
+// The two ways the interviewer went quiet in real interviews, replayed through the whole call.
+describe("LiveInterview: the interviewer never leaves the candidate waiting", () => {
+    test("a reply that asks nothing is followed by the interviewer carrying on, without the candidate having to say anything", async () => {
+        // "That's a solid project." and nothing else: before, both sides waited until the candidate said "hey, there's some problem".
+        const llm = new FakeLlm(brain((d) => (/Follow-ups used/.test(d) ? "That's a solid project." : null)));
+        const ctx = await setup("quick", { llm });
+        const voice = await ctx.connect();
+        await ctx.say(voice, ANSWER);
+
+        assert.ok(voice.spoken.includes("That's a solid project."));
+        assert.ok(voice.spoken.includes("So what made you choose that?"), "the follow-up came by itself");
+        assert.ok(voice.spoken.indexOf("So what made you choose that?") > voice.spoken.indexOf("That's a solid project."));
+        const history = (ctx.live as any).conductor.history as Array<{ role: string }>;
+        assert.equal(history.filter((u) => u.role === "candidate").length, 1, "the candidate said nothing more");
+    });
+
+    test("'let's move on' without the marker moves on, and the next question is asked", async () => {
+        const llm = new FakeLlm(brain((d) => (/Follow-ups used/.test(d) ? "Sure, let's move on to the next topic." : null)));
+        const ctx = await setup("quick", { llm });
+        const voice = await ctx.connect();
+        await ctx.say(voice, ANSWER);
+        await ctx.say(voice, ANSWER);
+        assert.ok(voice.of("ROUND").length >= 2, "the next part began");
+        assert.ok(voice.spoken.some((s) => /next question/.test(s)), "and its first question was asked, unprompted");
+    });
+
+    test("an answer in the interviewer's own words, given after it finished speaking, is heard, not thrown away as echo", async () => {
+        // The check-in "Want me to rephrase the question or give you more time?" and the answer "Give me more time":
+        // before, every such answer was dropped as echo, and the check-in came back every half minute for seven minutes.
+        const ctx = await setup("quick", { echoTailMs: 50 });
+        const voice = await ctx.connect();
+        assert.match(voice.spoken.join(" "), /Could you introduce yourself\?/);
+        await sleep(120); // the interviewer has stopped; this is a reply, not its voice coming back
+
+        voice.handlers.onCandidateSpeaking("Could you introduce yourself", false);
+        voice.handlers.onCandidateSpeaking("Could you introduce yourself again?", true);
+        voice.handlers.onCandidateTurn("Could you introduce yourself again?");
+        await ctx.live.idle();
+
+        assert.ok(voice.of("CAPTION").some((c) => c.role === "candidate" && c.final), "captioned as the candidate");
+        const history = (ctx.live as any).conductor.history as Array<{ role: string; text: string }>;
+        assert.ok(history.some((u) => u.role === "candidate" && /introduce yourself again/.test(u.text)), "and taken as their answer");
     });
 });

@@ -13,7 +13,7 @@ import { getProblemDef, redactHidden, runAll, warmExpected } from "../interview/
 import { personaPrompt } from "../interview/prompts";
 import { InterviewRecorder } from "../interview/recorder";
 import { VOICES, finishInterview, markStarted } from "../interview/service";
-import { EchoGuard } from "../voice/echoGuard";
+import { ECHO_TAIL_MS, EchoGuard } from "../voice/echoGuard";
 import { isBackchannel, isInterruption, isMoveOnConfirmation } from "../voice/turnTaker";
 import { removeLive } from "./registry";
 import { Voice, type VoiceFactory, type VoiceLike } from "./voice";
@@ -40,6 +40,8 @@ const DUCK_HOLD_MS = 1_200;
 const TRANSITION_BEAT_MS = 2_000;
 /** If the candidate is still mid-sentence when the pause ends, wait for them, but not forever. */
 const TRANSITION_WAIT_FOR_CANDIDATE_MS = 4_000;
+/** A pause this long in what is heard from the candidate starts a new stretch of speech (see noteHeard()). */
+const NEW_SPEECH_GAP_MS = 2_000;
 /** Things that appear as the interviewer starts to speak still appear if no sound is ever played (text mode, speech trouble). */
 const START_EVENTS_FALLBACK_MS = 6_000;
 /** The longest a single spoken turn is waited for. */
@@ -80,6 +82,8 @@ export interface LiveInterviewInit {
     transitionBeatMs?: number;
     /** How long to wait before asking a busy model again. Shortened in tests. */
     rateLimitWaitMs?: number;
+    /** How long after the interviewer stops speaking what is heard can still be its echo. Shortened in tests. */
+    echoTailMs?: number;
     /** Called after the interview is closed and saved, so the caller can start scoring. */
     onFinished?: (interviewId: string, info: { substantive: boolean; reason: EndReason }) => void;
 }
@@ -145,7 +149,10 @@ export class LiveInterview {
     /** Bumped whenever the silence clock is reset, so a check-in armed for a quiet that has since ended never goes off. */
     private silenceGeneration = 0;
     /** Recognises the interviewer's own voice leaking back through the candidate's microphone. */
-    private readonly echo = new EchoGuard();
+    private readonly echo: EchoGuard;
+    /** When the candidate's current stretch of speech was first heard, and when anything of it was last heard. */
+    private heardFrom: number | null = null;
+    private lastHeardAt = 0;
     private suspendTimer: NodeJS.Timeout | null = null;
     private readonly tickTimer: NodeJS.Timeout;
 
@@ -153,6 +160,7 @@ export class LiveInterview {
         const { interview, plan } = init;
         const voiceInfo = VOICES.find((v) => v.id === interview.voice);
 
+        this.echo = new EchoGuard(Date.now, init.echoTailMs ?? ECHO_TAIL_MS);
         this.recorder = new InterviewRecorder(interview.id, this.startedAt);
         this.conductor = new Conductor({
             plan,
@@ -242,10 +250,18 @@ export class LiveInterview {
 
     // ------------------------------------------------------------------------------ candidate input
 
+    /** Notes that some of the candidate's speech was just heard, and returns when this stretch of it began. */
+    private noteHeard(): number {
+        const now = Date.now();
+        if (this.heardFrom === null || now - this.lastHeardAt > NEW_SPEECH_GAP_MS) this.heardFrom = now;
+        this.lastHeardAt = now;
+        return this.heardFrom;
+    }
+
     private onCandidateSpeaking(text: string, isFinal: boolean): void {
         // The interviewer's own voice coming back through the speakers is not the candidate: don't caption it,
         // and don't stop talking because of it.
-        if (config.voiceEchoGuard && this.echo.isEcho(text, 2)) return;
+        if (config.voiceEchoGuard && this.echo.isEcho(text, 2, this.noteHeard())) return;
 
         this.clearSilenceTimers();
         // While a move is pending, a short "yes" or "let's continue" is agreeing to it, not new speech: it
@@ -269,8 +285,12 @@ export class LiveInterview {
 
     /** A finished utterance from speech recognition. Typed answers skip the echo check and go straight to onCandidateTurn. */
     private onSpokenTurn(text: string): void {
-        if (config.voiceEchoGuard && this.echo.isEcho(text)) {
-            logger.debug({ interviewId: this.id, text: text.slice(0, 80) }, "Ignored the interviewer's own voice heard through the microphone");
+        const heardFrom = this.heardFrom ?? Date.now();
+        this.heardFrom = null;
+        if (config.voiceEchoGuard && this.echo.isEcho(text, 3, heardFrom)) {
+            // Logged at info, without the words, so a dropped answer is never invisible again; the words are at debug.
+            logger.info({ interviewId: this.id, words: text.trim().split(/\s+/).length }, "Ignored speech as the interviewer's own voice heard through the microphone");
+            logger.debug({ interviewId: this.id, text: text.slice(0, 120) }, "The speech ignored as echo");
             return;
         }
         this.onCandidateTurn(text);
@@ -282,10 +302,17 @@ export class LiveInterview {
         // A move the interviewer announced is still pending: "yes", "sure", "let's continue" is confirming it,
         // not a fresh answer about the question just left behind. Leave it alone and let the pause commit the
         // move and ask what comes next, instead of reopening the old topic or silently dropping it either way.
-        if (this.conductor.hasPendingMove && isMoveOnConfirmation(text)) return;
+        if (this.conductor.hasPendingMove && isMoveOnConfirmation(text)) {
+            logger.info({ interviewId: this.id }, "Took a short reply as agreeing to move on");
+            return;
+        }
         // "Okay", "right", "mm-hmm" after something that was not a question is the candidate listening, not answering:
         // a person carries on rather than reacting to it. It does not interrupt, and it does not call off a move on.
-        if (isBackchannel(text) && !this.conductor.lastInterviewerAskedQuestion) return;
+        // (Nothing is left waiting on it: a reply that asks nothing is followed by the interviewer carrying on by itself.)
+        if (isBackchannel(text) && !this.conductor.lastInterviewerAskedQuestion) {
+            logger.info({ interviewId: this.id }, "Took a short acknowledgement as listening, not as an answer");
+            return;
+        }
 
         this.candidateStirredAt = Date.now();
         // Let the goodbye finish: the interview is over either way, and the candidate should hear what happens next.
@@ -466,7 +493,10 @@ export class LiveInterview {
             run.interrupted = true;
         }
         if (this.replyActive) this.abort?.abort();
-        if ((this.voice?.queuedMs ?? 0) > 0 || this.replyActive || (run && !run.done)) this.voice?.stopSpeech();
+        if ((this.voice?.queuedMs ?? 0) > 0 || this.replyActive || (run && !run.done)) {
+            this.voice?.stopSpeech();
+            this.echo.noteStopped();
+        }
     }
 
     /**
@@ -480,6 +510,11 @@ export class LiveInterview {
                 let outcome = await this.speak(turn);
                 if (this.finalized) return;
                 for (const event of outcome.events) this.send(event);
+                if (outcome.leftHanging) {
+                    logger.info({ interviewId: this.id, kind: turn.kind, then: outcome.leftHanging }, outcome.leftHanging === "move"
+                        ? "The interviewer's reply asked nothing and had no marker, but closed the topic: moving on"
+                        : "The interviewer's reply asked nothing and did not move on: carrying on with a question");
+                }
 
                 if (outcome.transition) {
                     // The interviewer has said it is moving on. Give the candidate a moment to add something first; if they do,
@@ -618,6 +653,7 @@ export class LiveInterview {
         // The turn is over when its last word has been heard, not when the model finished writing it. Everything the
         // conductor does next (moving on, closing a question) depends on what the candidate actually heard.
         if (!run.interrupted) await voice.drained(MAX_PLAYBACK_WAIT_MS);
+        this.echo.noteStopped();
         cancelPlaybackWatch();
         clearTimeout(fallback);
         logger.debug({ interviewId: this.id, kind: turn.kind, sentences: sentences.length, wroteMs: wroteAt - startedAt, playedMs: Date.now() - wroteAt, cutIn: run.interrupted }, "Interviewer turn finished");
@@ -653,18 +689,17 @@ export class LiveInterview {
     private watchSilence(): void {
         this.clearSilenceTimers();
         const generation = this.silenceGeneration;
-        const policy = this.conductor.silencePolicy();
         const voice = this.voice;
-        if (!policy || !voice) return;
+        if (!voice || !this.conductor.silencePolicy()) return;
 
         void voice.drained().then(() => {
             // The next turn may already have begun while the last audio drained (the candidate spoke, a problem is being
             // introduced again): the quiet this clock was for is over, so it must not start now.
             if (generation !== this.silenceGeneration || this.finalized || voice !== this.voice || voice.isClosed) return;
+            this.echo.noteStopped();
             this.send({ type: "STATE", state: "listening" });
-            const levels: Array<[1 | 2 | 3, number | null]> = [[1, policy.nudgeMs[0]], [2, policy.nudgeMs[1]], [3, policy.autoAdvanceMs]];
-            for (const [level, ms] of levels) {
-                if (ms === null) continue;
+            // Only the check-ins still to come: after a check-in the next is the following one, not the first one again.
+            for (const { level, ms } of this.conductor.silenceChecks()) {
                 const timer = setTimeout(() => this.fireSilence(level, generation), ms);
                 timer.unref();
                 this.silenceTimers.push(timer);
